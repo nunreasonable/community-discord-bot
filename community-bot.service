@@ -1,0 +1,23 @@
+[Unit]
+Description=CommunityBot - bot de moderacao e diversao
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# O bot resolve config/ e data/ a partir do cwd.
+WorkingDirectory=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot
+ExecStart=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot/bin/Debug/net9.0/CommunityBot
+
+# O IPv6 de saida desta maquina nao funciona; sem isto o .NET perde tempo em
+# timeouts ao falar com a API do Discord. Mesmo motivo do ccore-bot.service.
+Environment=DOTNET_SYSTEM_NET_DISABLEIPV6=1
+Environment=DOTNET_ENVIRONMENT=Production
+
+Restart=on-failure
+RestartSec=10
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

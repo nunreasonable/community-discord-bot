@@ -1,0 +1,13 @@
+{
+    // Token da aplicacao do bot. Copie este arquivo para config.jsonc e cole o
+    // token la - config.jsonc esta no .gitignore justamente por causa disto.
+    "token": "",
+
+    // Servidores onde os comandos sao registrados na hora. Lista vazia registra
+    // globalmente, o que propaga em ate uma hora.
+    "guildIds": [],
+
+    // Canal que recebe um embed por acao de moderacao. Sem ele o bot funciona,
+    // mas nada fica registrado fora do proprio Discord.
+    "moderationLogChannelId": null
+}

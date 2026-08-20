@@ -1,0 +1,8 @@
+# O config real carrega o token do bot. So o exemplo e versionado.
+CommunityBot/config/config.jsonc
+
+# Dados gravados em execucao.
+CommunityBot/data/*.json
+
+bin/
+obj/
