@@ -25,7 +25,7 @@ namespace CommunityBot.commands
     [ApplicationCommandRequireGuild]
     internal class Moderation : ApplicationCommandsModule
     {
-        [SlashCommand("ban", "Bane um usuário do servidor")]
+        [SlashCommand("ban", "Bane um usuário do servidor", (long)Permissions.BanMembers)]
         [ApplicationCommandRequireUserPermissions(Permissions.BanMembers)]
         [ApplicationCommandRequireBotPermissions(Permissions.BanMembers)]
         public async Task BanCommand(
@@ -77,7 +77,7 @@ namespace CommunityBot.commands
                 deleteDays > 0 ? $"Mensagens dos últimos {deleteDays} dia(s) apagadas." : null);
         }
 
-        [SlashCommand("kick", "Expulsa um usuário do servidor")]
+        [SlashCommand("kick", "Expulsa um usuário do servidor", (long)Permissions.KickMembers)]
         [ApplicationCommandRequireUserPermissions(Permissions.KickMembers)]
         [ApplicationCommandRequireBotPermissions(Permissions.KickMembers)]
         public async Task KickCommand(
@@ -122,7 +122,7 @@ namespace CommunityBot.commands
             await ModerationLog.RecordAsync(ctx.Client, config, "Expulsão", user, ctx.User, reason);
         }
 
-        [SlashCommand("timeout", "Silencia um usuário por um tempo")]
+        [SlashCommand("timeout", "Silencia um usuário por um tempo", (long)Permissions.ModerateMembers)]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         [ApplicationCommandRequireBotPermissions(Permissions.ModerateMembers)]
         public async Task TimeoutCommand(
@@ -177,7 +177,7 @@ namespace CommunityBot.commands
                 $"Duração: {describe}");
         }
 
-        [SlashCommand("untimeout", "Remove o silenciamento de um usuário")]
+        [SlashCommand("untimeout", "Remove o silenciamento de um usuário", (long)Permissions.ModerateMembers)]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         [ApplicationCommandRequireBotPermissions(Permissions.ModerateMembers)]
         public async Task UntimeoutCommand(
@@ -215,7 +215,7 @@ namespace CommunityBot.commands
             await ModerationLog.RecordAsync(ctx.Client, config, "Silenciamento removido", user, ctx.User, reason);
         }
 
-        [SlashCommand("purge", "Apaga mensagens recentes do canal")]
+        [SlashCommand("purge", "Apaga mensagens recentes do canal", (long)Permissions.ManageMessages)]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageMessages)]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageMessages)]
         public async Task PurgeCommand(
@@ -273,7 +273,7 @@ namespace CommunityBot.commands
             }
         }
 
-        [SlashCommand("slowmode", "Define o modo lento do canal")]
+        [SlashCommand("slowmode", "Define o modo lento do canal", (long)Permissions.ManageChannels)]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageChannels)]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageChannels)]
         public async Task SlowmodeCommand(
@@ -306,14 +306,14 @@ namespace CommunityBot.commands
                 : Embeds.Ok("Modo lento ligado", $"Uma mensagem a cada {seconds} segundo(s) em {ctx.Channel.Mention}.")));
         }
 
-        [SlashCommand("lock", "Impede o @everyone de enviar mensagens no canal")]
+        [SlashCommand("lock", "Impede o @everyone de enviar mensagens no canal", (long)Permissions.ManageChannels)]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageChannels)]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageRoles)]
         public Task LockCommand(InteractionContext ctx,
             [Option("motivo", "Motivo do fechamento")] string? reason = null) =>
             SetLockAsync(ctx, locked: true, reason);
 
-        [SlashCommand("unlock", "Devolve ao @everyone o envio de mensagens no canal")]
+        [SlashCommand("unlock", "Devolve ao @everyone o envio de mensagens no canal", (long)Permissions.ManageChannels)]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageChannels)]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageRoles)]
         public Task UnlockCommand(InteractionContext ctx,

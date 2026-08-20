@@ -136,7 +136,7 @@ namespace CommunityBot.commands
                     .WithColor(DiscordColor.Blurple)));
         }
 
-        [SlashCommand("say", "Faz o bot repetir um texto")]
+        [SlashCommand("say", "Faz o bot repetir um texto", (long)Permissions.ManageMessages)]
         // Exige ManageMessages: sem isso qualquer um faria o bot falar, e mensagem
         // vinda do bot tem aparencia de coisa oficial.
         [ApplicationCommandRequireUserPermissions(Permissions.ManageMessages)]

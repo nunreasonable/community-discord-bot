@@ -23,7 +23,7 @@ namespace CommunityBot.commands
         /// <summary>Quantas advertências cabem numa página do /warnings.</summary>
         private const int PageSize = 10;
 
-        [SlashCommand("warn", "Registra uma advertência para um usuário")]
+        [SlashCommand("warn", "Registra uma advertência para um usuário", (long)Permissions.ModerateMembers)]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         public async Task WarnCommand(
             InteractionContext ctx,
@@ -79,7 +79,7 @@ namespace CommunityBot.commands
                 $"Id `{warning.id}` — total de {total}");
         }
 
-        [SlashCommand("warnings", "Lista as advertências de um usuário")]
+        [SlashCommand("warnings", "Lista as advertências de um usuário", (long)Permissions.ModerateMembers)]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         public async Task WarningsCommand(
             InteractionContext ctx,
@@ -118,7 +118,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("delwarn", "Remove uma advertência pelo id")]
+        [SlashCommand("delwarn", "Remove uma advertência pelo id", (long)Permissions.ModerateMembers)]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         public async Task DelWarnCommand(
             InteractionContext ctx,

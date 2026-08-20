@@ -29,7 +29,7 @@ namespace CommunityBot.commands
 
         // Os logs carregam ids de usuario, mensagens de excecao e caminhos da
         // maquina que hospeda o bot: ficam restritos a quem administra o servidor.
-        [SlashCommand("logs", "Mostra os últimos logs do bot")]
+        [SlashCommand("logs", "Mostra os últimos logs do bot", (long)Permissions.Administrator)]
         [ApplicationCommandRequireUserPermissions(Permissions.Administrator)]
         public async Task LogsCommand(
             InteractionContext ctx,
