@@ -1,0 +1,26 @@
+[Unit]
+Description=Rich Presence pessoal do daeese (aplicacao Sollarety)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# O script resolve presence.json a partir do proprio diretorio, entao o cwd
+# nao e critico - mas fixa-lo evita surpresa se isso mudar.
+WorkingDirectory=/home/daeese/daeesewrkspc/community-discord-bot/presence
+ExecStart=/usr/bin/python3 /home/daeese/daeesewrkspc/community-discord-bot/presence/daeese_presence.py
+
+# Diferente do community-bot.service, aqui nao ha nada de rede: o processo so
+# fala com o socket IPC local do cliente Discord. Por isso tambem nao ha
+# Environment de IPv6.
+
+# Restart=always, e nao on-failure: sair com codigo 0 porque o Discord estava
+# fechado e o caso comum, nao uma falha. O proprio script ja faz backoff
+# interno; este Restart e a rede de seguranca para o processo morrer de vez.
+Restart=always
+RestartSec=15
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

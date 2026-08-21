@@ -85,3 +85,54 @@ carregam ids de usuário, mensagens de exceção e caminhos da máquina.
 - <https://ccore.daeese.me/fun/privacypolicy/>
 
 Fonte em `nunreasonable.github.io/cornwallcore/fun/`.
+
+## Rich Presence pessoal (`presence/`)
+
+Um processo separado do bot que mostra um cartão de atividade com a identidade
+do daeese.me no perfil pessoal do dono, reaproveitando o Application ID desta
+mesma aplicação.
+
+Ele **não** vive no C# de propósito: presença de *usuário* não passa pelo
+gateway. Quem a define é o cliente Discord desktop, por um socket IPC local
+(`$XDG_RUNTIME_DIR/discord-ipc-0`). Um bot de gateway não tem como escrever na
+presença de uma conta — só a máquina onde o Discord está aberto tem.
+
+```bash
+systemctl --user status daeese-presence
+journalctl --user -u daeese-presence -f
+```
+
+A arte é gerada no repo do site, por `filearchive/widget/render.sh`.
+
+### Por que isto não é um widget de perfil
+
+A intenção original era um widget custom de perfil. O Discord encerrou aquele
+experimento — artigo oficial [Game Stats Widget Experiment][gsw], 27/07/2026:
+*"new custom widgets can no longer be created"*. Medido nesta aplicação em
+21/08/2026:
+
+```
+POST /applications/1403153848507301939/widget-configs   {"display_name": "..."}
+403  code 40128  "This action requires a claimed game on the application team"
+```
+
+O endpoint continua de pé (com corpo vazio ele responde `400` pedindo
+`display_name`), mas a criação exige um **jogo reivindicado** no time da
+aplicação. Sollarety é um bot de moderação, então essa porta está fechada.
+
+[gsw]: https://support-dev.discord.com/hc/en-us/articles/42261641635351-Game-Stats-Widget-Experiment
+
+### Duas coisas que não são óbvias
+
+**O tipo da atividade decide se o cartão sobrevive.** O cliente mantém um único
+card do tipo *Playing*, e um jogo detectado ganha dele: com `activityType: 0` e
+o Roblox aberto, a presença era simplesmente descartada — medido, zero
+atividades além do Roblox. Com `activityType: 3` (*Watching*) as duas convivem.
+
+**As imagens vão por URL, não por chave de asset.** O cliente Discord cacheia a
+lista de assets da aplicação. Logo depois de subir as artes em *Rich Presence →
+Art Assets*, nem o nome (`rp-large`) nem o ID do asset resolviam — o cliente
+descartava `assets.large_image` e mantinha só o `large_text`. Uma URL `https`
+é proxiada para `mp:external/...`, o mesmo caminho que o próprio Roblox usa, e
+funciona na hora. As chaves de asset voltam a funcionar depois que o cliente
+Discord reinicia e refaz o cache.
