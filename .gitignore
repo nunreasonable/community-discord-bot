@@ -2,7 +2,14 @@
 CommunityBot/config/config.jsonc
 
 # Dados gravados em execucao.
-CommunityBot/data/*.json
+# *.json* e nao *.json: o WarningStore grava warnings.json.tmp e so depois
+# renomeia. Se o processo morrer no meio, esse .tmp fica no disco com o
+# historico de moderacao de todos os servidores - e o padrao antigo nao o
+# pegava, entao um `git add -A` o levaria junto.
+CommunityBot/data/*.json*
 
 bin/
 obj/
+
+# Cache do Python do script de presenca.
+__pycache__/

@@ -20,6 +20,7 @@ namespace CommunityBot.commands
     /// <see cref="BotLogBuffer"/>. Evita precisar de acesso SSH a maquina para
     /// descobrir por que alguma coisa falhou.
     /// </summary>
+    [ApplicationCommandRequireGuild]
     internal class BotLogs : ApplicationCommandsModule
     {
         private const string LevelAll = "todos";
@@ -29,6 +30,13 @@ namespace CommunityBot.commands
 
         // Os logs carregam ids de usuario, mensagens de excecao e caminhos da
         // maquina que hospeda o bot: ficam restritos a quem administra o servidor.
+        //
+        // O RequireGuild na classe nao e redundante com o atributo abaixo: o
+        // ApplicationCommandRequireUserPermissions tem IgnoreDms = true por
+        // padrao e o defaultMemberPermissions nao vale em DM. Com guildIds
+        // vazio - modo que o README documenta como suportado - o comando seria
+        // registrado globalmente e qualquer um que pudesse mandar DM ao bot
+        // leria o buffer inteiro.
         [SlashCommand("logs", "Mostra os últimos logs do bot", (long)Permissions.Administrator)]
         [ApplicationCommandRequireUserPermissions(Permissions.Administrator)]
         public async Task LogsCommand(

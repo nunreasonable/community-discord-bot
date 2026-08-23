@@ -151,11 +151,26 @@ namespace CommunityBot.commands
                 .WithContent(Embeds.Trim(texto, 1900))
                 .WithAllowedMentions(Array.Empty<IMention>());
 
-            await ctx.Channel.SendMessageAsync(builder);
+            // Defer ANTES de publicar. Publicando primeiro, se o bot nao tivesse
+            // permissao de escrever no canal a excecao acontecia com a interacao
+            // ainda sem resposta: o Discord mostrava "This interaction failed" e
+            // nada explicava o motivo.
+            await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder().AsEphemeral());
 
-            await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
-                new DiscordInteractionResponseBuilder().AddEmbed(
-                    Embeds.Ok("Enviado", "A mensagem foi publicada no canal.")).AsEphemeral());
+            try
+            {
+                await ctx.Channel.SendMessageAsync(builder);
+            }
+            catch (Exception ex)
+            {
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                    Embeds.Error("Falha ao publicar", Embeds.Trim(ex.Message, 500))));
+                return;
+            }
+
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                Embeds.Ok("Enviado", "A mensagem foi publicada no canal.")));
         }
     }
 }

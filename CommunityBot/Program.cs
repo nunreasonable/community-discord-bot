@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,6 +11,7 @@ using DisCatSharp.ApplicationCommands;
 using DisCatSharp.Entities;
 using DisCatSharp.Enums;
 using DisCatSharp.EventArgs;
+using Newtonsoft.Json;
 using DisCatSharp.Interactivity;
 using DisCatSharp.Interactivity.Enums;
 using DisCatSharp.Interactivity.Extensions;
@@ -30,7 +32,22 @@ namespace CommunityBot
             InstallGlobalExceptionHandlers();
 
             var config = new JSONReader();
-            await config.ReadJSON();
+            try
+            {
+                await config.ReadJSON();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                // A mensagem amigavel logo abaixo era codigo morto justamente
+                // para o caso que ela descreve: sem o arquivo, o ReadJSON
+                // lancava FileNotFoundException antes de chegar la. E com
+                // Restart=on-failure no systemd isso virava um laco de crash a
+                // cada 10 segundos, sem nada explicando o motivo.
+                Console.WriteLine("[fatal] Nao consegui ler config/config.jsonc: " + ex.Message);
+                Console.WriteLine("        Copie config/config.example.jsonc para config/config.jsonc " +
+                                  "e preencha o campo \"token\".");
+                return;
+            }
 
             if (string.IsNullOrWhiteSpace(config.token))
             {
@@ -88,6 +105,37 @@ namespace CommunityBot
             };
 
             var slashCommands = Client.UseApplicationCommands(new ApplicationCommandsConfiguration());
+
+            // Sem este handler, toda excecao lancada DEPOIS do defer efemero
+            // sumia: o DisCatSharp a entrega no SlashCommandErrored, e ninguem
+            // estava inscrito. Na pratica o usuario ficava no "pensando..."
+            // para sempre e nada chegava ao BotLogBuffer - entao nem o /logs
+            // conseguia diagnosticar. Isso mascarava todo o resto.
+            slashCommands.SlashCommandErrored += async (s, e) =>
+            {
+                var name = e.Context?.CommandName ?? "(desconhecido)";
+                var who = e.Context?.User?.Id;
+                Console.WriteLine($"[erro] /{name} de {who} falhou: {e.Exception}");
+
+                // Uma checagem que recusou o comando nao e falha: e o
+                // comportamento pretendido, e o proprio DisCatSharp ja
+                // respondeu. Avisar de novo daria erro de "ja respondido".
+                if (e.Exception is DisCatSharp.ApplicationCommands.Exceptions.SlashExecutionChecksFailedException)
+                    return;
+
+                try
+                {
+                    // O comando quase sempre ja deferiu; por isso edita a
+                    // resposta original em vez de criar uma nova.
+                    await e.Context!.EditResponseAsync(new DiscordWebhookBuilder()
+                        .AddEmbed(Embeds.Error("Falha no comando",
+                            "Algo quebrou ao executar. O erro foi registrado; avise quem administra o bot.")));
+                }
+                catch (Exception inner)
+                {
+                    Console.WriteLine($"[erro] nao consegui avisar o usuario sobre a falha de /{name}: {inner.Message}");
+                }
+            };
 
             var guildIds = config.guildIds ?? Array.Empty<ulong>();
             if (guildIds.Length == 0)

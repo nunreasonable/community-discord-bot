@@ -22,7 +22,10 @@ namespace CommunityBot.Services
             DiscordClient client,
             JSONReader config,
             string action,
-            DiscordUser target,
+            // Nullable: ha acoes que nao tem alvo, como o /purge sem filtro de
+            // usuario. Antes o chamador passava o proprio moderador nesse caso,
+            // e o embed saia dizendo que ele agira contra si mesmo.
+            DiscordUser? target,
             DiscordUser moderator,
             string? reason,
             string? extra = null)
@@ -40,11 +43,14 @@ namespace CommunityBot.Services
                     .WithTitle($"Moderação — {action}")
                     .WithColor(DiscordColor.Orange)
                     .WithTimestamp(DateTimeOffset.UtcNow)
-                    .WithThumbnail(target.AvatarUrl)
-                    .AddField(new DiscordEmbedField("Usuário", $"{target.Mention}\n`{target.Id}`", true))
+                    .AddField(new DiscordEmbedField("Usuário",
+                        target is null ? "*toda a conversa do canal*" : $"{target.Mention}\n`{target.Id}`", true))
                     .AddField(new DiscordEmbedField("Moderador", $"{moderator.Mention}\n`{moderator.Id}`", true))
                     .AddField(new DiscordEmbedField("Motivo",
                         string.IsNullOrWhiteSpace(reason) ? "*não informado*" : Embeds.Trim(reason, 1000), false));
+
+                if (target is not null)
+                    embed.WithThumbnail(target.AvatarUrl);
 
                 if (!string.IsNullOrWhiteSpace(extra))
                     embed.AddField(new DiscordEmbedField("Detalhes", Embeds.Trim(extra, 1000), false));

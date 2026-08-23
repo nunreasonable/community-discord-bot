@@ -44,7 +44,7 @@ namespace CommunityBot.commands
             if (member is not null)
             {
                 var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member,
-                    await ctx.Guild!.GetMemberAsync(ctx.Client.CurrentUser.Id));
+                    ctx.Guild!.CurrentMember);
                 if (blocked is not null)
                 {
                     await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(blocked));
@@ -162,13 +162,24 @@ namespace CommunityBot.commands
                 removed.reason, $"Id `{removed.id}`, registrada originalmente por <@{removed.moderatorId}>");
         }
 
+        /// <summary>
+        /// Busca o membro. Devolve null SO quando ele de fato nao esta no
+        /// servidor.
+        ///
+        /// O catch aberto de antes engolia tambem rate limit, 5xx e falha de
+        /// rede - e o chamador trata null como "saiu do servidor" e PULA a
+        /// checagem de hierarquia. Ou seja, a checagem falhava aberta: numa
+        /// instabilidade qualquer, um moderador com apenas Ban Members conseguia
+        /// punir alguem acima dele. Agora so o NotFound vira null; o resto sobe
+        /// e o comando falha de forma visivel, que e o lado certo para errar.
+        /// </summary>
         private static async Task<DiscordMember?> TryGetMemberAsync(InteractionContext ctx, ulong userId)
         {
             try
             {
                 return await ctx.Guild!.GetMemberAsync(userId);
             }
-            catch
+            catch (DisCatSharp.Exceptions.NotFoundException)
             {
                 return null;
             }

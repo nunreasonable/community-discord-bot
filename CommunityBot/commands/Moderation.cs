@@ -49,7 +49,7 @@ namespace CommunityBot.commands
             var member = await TryGetMemberAsync(ctx, user.Id);
             if (member is not null)
             {
-                var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member, await ctx.Guild!.GetMemberAsync(ctx.Client.CurrentUser.Id));
+                var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member, ctx.Guild!.CurrentMember);
                 if (blocked is not null)
                 {
                     await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(blocked));
@@ -96,7 +96,7 @@ namespace CommunityBot.commands
                 return;
             }
 
-            var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member, await ctx.Guild!.GetMemberAsync(ctx.Client.CurrentUser.Id));
+            var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member, ctx.Guild!.CurrentMember);
             if (blocked is not null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(blocked));
@@ -149,7 +149,7 @@ namespace CommunityBot.commands
                 return;
             }
 
-            var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member, await ctx.Guild!.GetMemberAsync(ctx.Client.CurrentUser.Id));
+            var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member, ctx.Guild!.CurrentMember);
             if (blocked is not null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(blocked));
@@ -262,8 +262,11 @@ namespace CommunityBot.commands
 
                 var config = new JSONReader();
                 await config.ReadJSON();
+                // Sem filtro de usuario nao existe "alvo": passar ctx.User aqui
+                // fazia o embed dizer "Usuario: @mod / Moderador: @mod", como se
+                // o moderador tivesse feito uma limpeza contra si mesmo.
                 await ModerationLog.RecordAsync(ctx.Client, config, "Limpeza de mensagens",
-                    user ?? ctx.User, ctx.User, null,
+                    user, ctx.User, null,
                     $"{target.Count} mensagem(ns) em {ctx.Channel.Mention}");
             }
             catch (Exception ex)
@@ -357,6 +360,27 @@ namespace CommunityBot.commands
                     deny &= ~Permissions.SendMessages;
                 }
 
+                /*
+                 * LIMITACAO CONHECIDA, deliberada.
+                 *
+                 * O /lock faz duas coisas - tira o allow explicito e poe o deny -
+                 * e o /unlock desfaz so a segunda. Num canal onde o @everyone
+                 * tinha SendMessages explicitamente CONCEDIDO, sobrepondo uma
+                 * negacao no nivel do servidor, o ciclo lock/unlock deixa o
+                 * overwrite em "neutro": o @everyone continua mudo.
+                 *
+                 * Nao e corrigido aqui de proposito. Restaurar o allow exige
+                 * lembrar o estado anterior entre duas invocacoes separadas, o
+                 * que pede persistencia; e adivinhar - sempre repor o allow no
+                 * unlock - ABRIRIA canais que estavam fechados de proposito
+                 * antes do /lock. Entre errar concedendo e errar negando, negar
+                 * e o lado certo.
+                 *
+                 * Nao da para simplesmente manter allow e deny juntos: o Discord
+                 * aplica o deny e depois o allow no overwrite do @everyone,
+                 * entao o allow venceria e o /lock nao trancaria nada.
+                 */
+
                 await ctx.Channel.AddOverwriteAsync(everyone, allow, deny, Reason(ctx, reason));
             }
             catch (Exception ex)
@@ -368,7 +392,10 @@ namespace CommunityBot.commands
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(locked
                 ? Embeds.Ok("Canal fechado", $"O @everyone não pode mais falar em {ctx.Channel.Mention}.")
-                : Embeds.Ok("Canal reaberto", $"O @everyone voltou a falar em {ctx.Channel.Mention}.")));
+                : Embeds.Ok("Canal reaberto",
+                    $"A proibição de falar em {ctx.Channel.Mention} foi retirada. Se o canal tinha " +
+                    "uma permissão de escrita concedida explicitamente ao @everyone antes do /lock, " +
+                    "confira as permissões: ela precisa ser reposta à mão.")));
 
             var config = new JSONReader();
             await config.ReadJSON();
@@ -378,8 +405,15 @@ namespace CommunityBot.commands
         }
 
         /// <summary>
-        /// Alvo pode ter saido do servidor. Devolve null em vez de lancar, para o
-        /// comando decidir se isso e problema.
+        /// Busca o membro. Devolve null SO quando ele de fato nao esta no
+        /// servidor.
+        ///
+        /// O catch aberto de antes engolia tambem rate limit, 5xx e falha de
+        /// rede - e o chamador trata null como "saiu do servidor" e PULA a
+        /// checagem de hierarquia. Ou seja, a checagem falhava aberta: numa
+        /// instabilidade qualquer, um moderador com apenas Ban Members conseguia
+        /// punir alguem acima dele. Agora so o NotFound vira null; o resto sobe
+        /// e o comando falha de forma visivel, que e o lado certo para errar.
         /// </summary>
         private static async Task<DiscordMember?> TryGetMemberAsync(InteractionContext ctx, ulong userId)
         {
@@ -387,7 +421,7 @@ namespace CommunityBot.commands
             {
                 return await ctx.Guild!.GetMemberAsync(userId);
             }
-            catch
+            catch (DisCatSharp.Exceptions.NotFoundException)
             {
                 return null;
             }

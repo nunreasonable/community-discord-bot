@@ -52,8 +52,19 @@ def log(message):
 
 
 def load_config():
-    with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
-        config = json.load(handle)
+    # Todo erro daqui vira SystemExit com mensagem legivel, nunca traceback: com
+    # Restart=always no systemd, um arquivo ausente ou malformado viraria um
+    # laco de crash a cada 15 s sem explicar o motivo.
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
+            config = json.load(handle)
+    except OSError as exc:
+        raise SystemExit(f"presence.json: nao consegui ler {CONFIG_PATH}: {exc}")
+    except ValueError as exc:
+        raise SystemExit(f"presence.json: JSON invalido: {exc}")
+
+    if not isinstance(config, dict):
+        raise SystemExit("presence.json: o conteudo precisa ser um objeto JSON")
 
     if not config.get("applicationId"):
         raise SystemExit("presence.json: applicationId e obrigatorio")
@@ -62,7 +73,9 @@ def load_config():
     if len(buttons) > 2:
         raise SystemExit("presence.json: o Discord aceita no maximo 2 botoes")
     for button in buttons:
-        if not button.get("url", "").startswith(("http://", "https://")):
+        if not isinstance(button, dict):
+            raise SystemExit(f"presence.json: botao precisa ser um objeto: {button}")
+        if not str(button.get("url", "")).startswith(("http://", "https://")):
             raise SystemExit(f"presence.json: botao sem URL http(s): {button}")
         if len(button.get("label", "")) > 32:
             raise SystemExit(f"presence.json: label de botao acima de 32 chars: {button}")
@@ -212,6 +225,16 @@ def run_session(config, started_at):
                 return True
             if opcode == OP_PING:
                 send(sock, OP_PONG, payload)
+    except (OSError, ValueError, AttributeError, KeyError) as exc:
+        # O caso mais comum de todos -- fechar o cliente do Discord no meio da
+        # sessao -- levanta OSError/BrokenPipeError dentro de send()/recv().
+        # Sem este except a excecao subia por main() e matava o processo com
+        # traceback, entao o backoff exponencial logo abaixo NUNCA rodava: quem
+        # trazia o servico de volta era so o Restart=always do systemd.
+        # ValueError cobre o json.loads de um frame truncado; AttributeError e
+        # KeyError, um frame com forma inesperada.
+        log(f"sessao caiu: {type(exc).__name__}: {exc}")
+        return False
     finally:
         try:
             sock.close()
