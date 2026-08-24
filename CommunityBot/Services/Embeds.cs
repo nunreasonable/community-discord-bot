@@ -18,8 +18,6 @@ namespace CommunityBot.Services
                 .WithColor(DiscordColor.IndianRed)
                 .Build();
 
-        public static DiscordEmbed Denied(string description) =>
-            Error("Permissão negada", description);
 
         public static DiscordEmbed Ok(string title, string description) =>
             new DiscordEmbedBuilder()
@@ -39,7 +37,16 @@ namespace CommunityBot.Services
         public static string Trim(string? value, int max)
         {
             var text = value ?? string.Empty;
-            return text.Length <= max ? text : text[..(max - 1)] + "…";
+            if (text.Length <= max)
+                return text;
+
+            // Nao corta no meio de um par substituto (um emoji ou caractere fora
+            // do BMP no ponto de corte): meio surrogate vira "<?>" no Discord.
+            var cut = max - 1;
+            if (cut > 0 && char.IsHighSurrogate(text[cut - 1]))
+                cut--;
+
+            return text[..cut] + "…";
         }
     }
 }

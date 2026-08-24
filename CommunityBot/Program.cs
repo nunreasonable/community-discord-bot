@@ -157,8 +157,39 @@ namespace CommunityBot
 
             StartThreadPoolCanary();
 
+            // Shutdown gracioso. A unit do systemd usa KillSignal=SIGINT, e antes
+            // o Task.Delay(-1) so era interrompido pela morte do processo: sem
+            // DisconnectAsync (o gateway ficava pendurado do lado do Discord) e
+            // sem flush do ConsoleTee (a ultima linha sem \n sumia do buffer).
+            using var shutdown = new CancellationTokenSource();
+            using var sigint = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+                System.Runtime.InteropServices.PosixSignal.SIGINT, ctx => { ctx.Cancel = true; shutdown.Cancel(); });
+            using var sigterm = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+                System.Runtime.InteropServices.PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; shutdown.Cancel(); });
+
             await Client.ConnectAsync();
-            await Task.Delay(-1);
+
+            try
+            {
+                await Task.Delay(Timeout.Infinite, shutdown.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Sinal recebido: segue para o encerramento limpo abaixo.
+            }
+
+            Console.WriteLine("[shutdown] sinal recebido; desconectando do gateway...");
+            try
+            {
+                await Client.DisconnectAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[shutdown] falha ao desconectar: {ex.Message}");
+            }
+
+            // Drena a ultima linha parcial do tee antes de sair.
+            Console.Out.Flush();
         }
 
         /// <summary>
@@ -292,7 +323,12 @@ namespace CommunityBot
                 last = now;
 
                 if (drift > TimeSpan.FromSeconds(2))
-                    Console.WriteLine($"[canary] thread pool atrasou {drift.TotalSeconds:0.0}s");
+                    // Tag [pool] e nao [canary]: e "[pool]" que o
+                    // BotLogBuffer.Classify reconhece como AVISO. Com a tag
+                    // antiga, inanicao de thread pool era arquivada como INFO e
+                    // ficava invisivel em `/logs nivel:aviso` - justamente o
+                    // filtro que se usa quando o bot esta "lento sem motivo".
+                    Console.WriteLine($"[pool] thread pool atrasou {drift.TotalSeconds:0.0}s");
             }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
         }
     }

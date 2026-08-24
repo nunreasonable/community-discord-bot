@@ -28,6 +28,24 @@ namespace CommunityBot.Services
     }
 
     /// <summary>
+    /// Visao mutavel do arquivo entregue a <see cref="WarningStore.UpdateAsync"/>.
+    ///
+    /// Quem muta precisa dizer que mutou, chamando <see cref="MarkChanged"/> -
+    /// e o unico jeito de o store saber se vale gravar sem reserializar tudo
+    /// para comparar.
+    /// </summary>
+    internal sealed class WarningEdit
+    {
+        public WarningEdit(WarningFile file) => File = file;
+
+        public WarningFile File { get; }
+
+        public bool Changed { get; private set; }
+
+        public void MarkChanged() => Changed = true;
+    }
+
+    /// <summary>
     /// Persistencia das advertencias (data/warnings.json).
     ///
     /// Segue o AuditStore do ccore em duas escolhas que nao sao obvias:
@@ -45,11 +63,24 @@ namespace CommunityBot.Services
 
         private static readonly SemaphoreSlim s_lock = new(1, 1);
 
-        private readonly string _path = Path.Combine("data", "warnings.json");
+        private readonly string _path = AppPaths.Data("warnings.json");
 
         private WarningStore()
         {
-            Directory.CreateDirectory("data");
+            // Remove um .tmp orfao de um processo que morreu entre o FileStream e
+            // o File.Move: ele fica no disco indefinidamente com o historico
+            // completo de moderacao. Best-effort - se nao der para apagar, o
+            // proximo WriteJsonAsync o sobrescreve de qualquer forma.
+            try
+            {
+                var orphan = _path + ".tmp";
+                if (File.Exists(orphan))
+                    File.Delete(orphan);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[warnings] nao foi possivel limpar o .tmp orfao: {ex.Message}");
+            }
         }
 
         public async Task<WarningFile> ReadAsync()
@@ -79,22 +110,31 @@ namespace CommunityBot.Services
         /// Unica forma de escrever: le, aplica a mutacao e grava - tudo sob o
         /// mesmo lock.
         /// </summary>
-        public async Task<T> UpdateAsync<T>(Func<WarningFile, T> mutate)
+        /// <summary>
+        /// Unica forma de escrever: le, aplica a mutacao e grava - tudo sob o
+        /// mesmo lock.
+        ///
+        /// A mutacao recebe um <see cref="WarningEdit"/> e diz explicitamente se
+        /// mudou alguma coisa. Antes isso era descoberto serializando o arquivo
+        /// INTEIRO duas vezes (antes e depois) e comparando as strings: dois
+        /// passes sobre todo o historico do servidor, dentro do lock global e do
+        /// orcamento de 3 segundos da interacao, so para saber se valia gravar.
+        /// </summary>
+        public async Task<T> UpdateAsync<T>(Func<WarningEdit, T> mutate)
         {
             await s_lock.WaitAsync().ConfigureAwait(false);
             try
             {
                 var file = await ReadJsonAsync().ConfigureAwait(false);
+                var edit = new WarningEdit(file);
+                var result = mutate(edit);
 
-                // Retrato de antes, para so gravar o que de fato mudou: uma
-                // mutacao que nao alterou nada (um /delwarn com id inexistente,
-                // por exemplo) nao deve reescrever o arquivo nem mexer no
+                // Uma mutacao que nao alterou nada (um /delwarn com id
+                // inexistente, por exemplo) nao reescreve o arquivo nem mexe no
                 // lastUpdatedUtc.
-                var before = JsonConvert.SerializeObject(file);
-                var result = mutate(file);
-
-                if (JsonConvert.SerializeObject(file) != before)
+                if (edit.Changed)
                 {
+                    Prune(file);
                     file.lastUpdatedUtc = DateTimeOffset.UtcNow;
                     await WriteJsonAsync(file).ConfigureAwait(false);
                 }
@@ -108,12 +148,56 @@ namespace CommunityBot.Services
         }
 
         /// <summary>
+        /// Teto de advertencias guardadas. Sem isto o arquivo so crescia, e cada
+        /// /warn relia, reserializava e regravava o historico inteiro.
+        /// </summary>
+        private const int MaxStoredWarnings = 5000;
+
+        private static void Prune(WarningFile file)
+        {
+            if (file.warnings.Count <= MaxStoredWarnings)
+                return;
+
+            // Descarta as mais antigas: advertencia recente e a que ainda importa
+            // para decidir uma punicao.
+            var keep = file.warnings
+                .OrderByDescending(w => w.createdAtUtc)
+                .Take(MaxStoredWarnings)
+                .OrderBy(w => w.createdAtUtc)
+                .ToList();
+
+            var dropped = file.warnings.Count - keep.Count;
+            file.warnings = keep;
+            Console.WriteLine($"[warnings] podadas {dropped} advertencia(s) antiga(s); teto e {MaxStoredWarnings}.");
+        }
+
+        /// <summary>
         /// Id curto e legivel para o /delwarn.
         ///
-        /// Oito caracteres de um Guid dao colisao desprezivel no volume de um
-        /// servidor, e ninguem digita um Guid inteiro a mao.
+        /// Oito caracteres de um Guid sao ~32 bits: no teto de 5000 advertencias a
+        /// chance de colisao ja passa de 0,3% (paradoxo do aniversario), e uma
+        /// colisao faz o /delwarn (que usa FirstOrDefault) apagar a advertencia
+        /// errada em silencio. Use NewUniqueId dentro da mutacao sempre que houver
+        /// o arquivo em maos.
         /// </summary>
         public static string NewId() => Guid.NewGuid().ToString("N")[..8];
+
+        /// <summary>
+        /// Id curto garantidamente unico dentro do arquivo. Chamado de dentro da
+        /// mutacao do UpdateAsync, onde o conjunto atual de advertencias esta
+        /// visivel e a unicidade pode ser conferida sem corrida.
+        /// </summary>
+        public static string NewUniqueId(WarningFile file)
+        {
+            string id;
+            do
+            {
+                id = Guid.NewGuid().ToString("N")[..8];
+            }
+            while (file.warnings.Any(w => w.id == id));
+
+            return id;
+        }
 
         private async Task<WarningFile> ReadJsonAsync()
         {
@@ -142,7 +226,22 @@ namespace CommunityBot.Services
             var json = JsonConvert.SerializeObject(file, Formatting.Indented);
             var temp = _path + ".tmp";
 
-            await File.WriteAllTextAsync(temp, json).ConfigureAwait(false);
+            // O .tmp e sincronizado no disco ANTES do rename.
+            //
+            // WriteAllTextAsync + File.Move ja protegia contra escrita rasgada,
+            // mas nao contra perda de energia: o rename podia chegar ao disco
+            // antes do conteudo, e o que sobrava era um warnings.json truncado ou
+            // vazio. Como o ReadJsonAsync trata vazio como "nenhuma
+            // advertencia", isso apagaria o historico inteiro em silencio - o
+            // oposto do que a escrita atomica existe para garantir.
+            await using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await using var writer = new StreamWriter(stream);
+                await writer.WriteAsync(json).ConfigureAwait(false);
+                await writer.FlushAsync().ConfigureAwait(false);
+                stream.Flush(flushToDisk: true);
+            }
+
             File.Move(temp, _path, overwrite: true);
         }
     }

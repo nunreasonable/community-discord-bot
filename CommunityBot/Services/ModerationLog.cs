@@ -18,6 +18,37 @@ namespace CommunityBot.Services
     /// </summary>
     internal static class ModerationLog
     {
+        /// <summary>
+        /// Le o config e registra, sem nunca lancar.
+        ///
+        /// Os comandos chamavam `new JSONReader()` + `ReadJSON()` por conta
+        /// propria DEPOIS de ja terem respondido "sucesso" ao moderador, e fora
+        /// de qualquer try. Se essa leitura falhasse (arquivo sendo reescrito,
+        /// JSON invalido), a excecao chegava ao SlashCommandErrored, que edita a
+        /// MESMA resposta original - o moderador via "Falha no comando" numa
+        /// punicao que tinha sido aplicada. Trazendo a leitura para dentro deste
+        /// metodo, ela passa a ser coberta pelo mesmo catch do resto.
+        /// </summary>
+        public static async Task RecordAsync(
+            DiscordClient client,
+            string action,
+            DiscordUser? target,
+            DiscordUser moderator,
+            string? reason,
+            string? extra = null)
+        {
+            try
+            {
+                var config = new JSONReader();
+                await config.ReadJSON();
+                await RecordAsync(client, config, action, target, moderator, reason, extra);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[modlog] falha ao ler o config para registrar '{action}': {ex.Message}");
+            }
+        }
+
         public static async Task RecordAsync(
             DiscordClient client,
             JSONReader config,

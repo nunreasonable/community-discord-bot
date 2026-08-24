@@ -45,6 +45,14 @@ CONFIG_PATH = os.path.join(HERE, "presence.json")
 RECONNECT_MIN = 15
 RECONNECT_MAX = 120
 
+# Teto de espera numa leitura do socket IPC. O protocolo e conversa curta com o
+# cliente local; passar disto significa que o outro lado travou.
+SOCKET_TIMEOUT = 30
+
+# Maior frame aceito do cliente Discord. O campo de tamanho e um <I (ate 4 GiB)
+# e vai direto para o read_exactly; os frames reais sao de alguns KB.
+MAX_FRAME_BYTES = 1 << 20
+
 
 def log(message):
     # journalctl ja carimba a hora; stdout sem buffer para o log nao atrasar.
@@ -116,6 +124,11 @@ def connect():
             continue
         try:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            # Sem timeout, um cliente Discord travado deixava o read_exactly
+            # bloqueado para sempre e o processo so voltava a viver pelo
+            # Restart=always da unit. Com timeout a sessao cai, o laco de
+            # reconexao assume e o backoff funciona como foi desenhado.
+            sock.settimeout(SOCKET_TIMEOUT)
             sock.connect(path)
             return sock, path
         except OSError:
@@ -133,16 +146,41 @@ def recv(sock):
     if header is None:
         return None, None
     opcode, length = struct.unpack("<II", header)
+    # length vem do outro lado do socket e alimenta o read_exactly direto. Um
+    # valor absurdo (ate 4 GiB, que e o teto de um <I) faria o processo tentar
+    # acumular tudo em memoria. Nenhum frame legitimo do IPC chega perto disto.
+    if length > MAX_FRAME_BYTES:
+        log(f"frame de {length} bytes acima do teto de {MAX_FRAME_BYTES}; descartando a sessao")
+        return None, None
     body = read_exactly(sock, length) if length else b""
     if body is None:
         return None, None
     return opcode, json.loads(body.decode("utf-8")) if body else {}
 
 
+class FrameIdle(OSError):
+    """Nada chegou dentro do timeout, e estavamos no INICIO de um frame.
+
+    Distinguir isto de um timeout no MEIO de um frame importa: no comeco nao ha
+    nada em curso e da para simplesmente esperar de novo, enquanto no meio o
+    fluxo ja perdeu o sincronismo e a sessao tem de cair.
+
+    Herda de OSError de proposito: no laco de escuta ele e tratado
+    explicitamente, mas se aparecer durante o handshake precisa cair no mesmo
+    `except OSError` que ja derruba a sessao e devolve o controle ao laco de
+    reconexao - e nao subir ate o main() e matar o processo.
+    """
+
+
 def read_exactly(sock, count):
     chunks = b""
     while len(chunks) < count:
-        chunk = sock.recv(count - len(chunks))
+        try:
+            chunk = sock.recv(count - len(chunks))
+        except TimeoutError:
+            if not chunks:
+                raise FrameIdle from None
+            raise
         if not chunk:
             return None
         chunks += chunk
@@ -219,7 +257,15 @@ def run_session(config, started_at):
         # de pe enquanto o socket estiver aberto, e some sozinha quando ele
         # fecha. Ler ate o EOF e o jeito de perceber que o Discord fechou.
         while True:
-            opcode, payload = recv(sock)
+            try:
+                opcode, payload = recv(sock)
+            except FrameIdle:
+                # Silencio do Discord e o estado NORMAL aqui: depois do
+                # SET_ACTIVITY so chegam PINGs esporadicos. O timeout existe para
+                # o processo nao ficar preso num recv que nunca volta - acordar e
+                # voltar a esperar e o comportamento certo, e nao derrubar uma
+                # sessao saudavel a cada 30 segundos.
+                continue
             if opcode is None:
                 log("socket encerrado pelo Discord")
                 return True
@@ -246,12 +292,13 @@ def main():
     config = load_config()
     started_at = time.time()
 
-    running = {"value": True}
-
     def stop(signum, _frame):
         # Fechar o processo ja limpa a presenca: o Discord a descarta quando o
         # socket cai. Nao ha o que "desfazer" no servidor.
-        running["value"] = False
+        #
+        # sys.exit levanta SystemExit e desenrola a pilha na hora, entao nao
+        # existe "avisar o laco para parar": a flag booleana que morava aqui
+        # nunca chegava a ser lida.
         log(f"sinal {signum} recebido, encerrando")
         sys.exit(0)
 
@@ -259,13 +306,17 @@ def main():
     signal.signal(signal.SIGINT, stop)
 
     delay = RECONNECT_MIN
-    while running["value"]:
+    while True:
         connected = run_session(config, started_at)
         if connected:
+            # Fechamento limpo do Discord: reconecta na hora. Antes o time.sleep
+            # abaixo rodava tambem neste caminho, deixando a presenca ausente por
+            # RECONNECT_MIN segundos apos cada reconexao normal.
             delay = RECONNECT_MIN
-        else:
-            delay = min(delay * 2, RECONNECT_MAX)
-            log(f"Discord indisponivel, nova tentativa em {delay}s")
+            continue
+
+        delay = min(delay * 2, RECONNECT_MAX)
+        log(f"Discord indisponivel, nova tentativa em {delay}s")
         time.sleep(delay)
 
 

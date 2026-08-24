@@ -44,9 +44,16 @@ namespace CommunityBot.commands
                 return;
             }
 
+            // A API do Discord conta este parametro em SEGUNDOS, nao em dias - o
+            // proprio DisCatSharp o chama de deleteMessageSeconds, com maximo de
+            // 604800 (7 dias). Passar `deleteDays` cru apagava 7 SEGUNDOS de
+            // mensagens quando o moderador pedia 7 dias, e o embed de confirmacao
+            // ainda afirmava que tinha apagado a semana inteira.
+            var deleteMessageSeconds = (int)(deleteDays * 86400);
+
             // O alvo pode nao ser membro do servidor - banir alguem que ja saiu e
             // legitimo, e por isso a hierarquia so e checada quando ele esta la.
-            var member = await TryGetMemberAsync(ctx, user.Id);
+            var member = await Hierarchy.TryGetMemberAsync(ctx, user.Id);
             if (member is not null)
             {
                 var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member, ctx.Guild!.CurrentMember);
@@ -59,7 +66,7 @@ namespace CommunityBot.commands
 
             try
             {
-                await ctx.Guild!.BanMemberAsync(user.Id, (int)deleteDays, Reason(ctx, reason));
+                await ctx.Guild!.BanMemberAsync(user.Id, deleteMessageSeconds, Reason(ctx, reason));
             }
             catch (Exception ex)
             {
@@ -71,9 +78,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Banido", $"{user.Mention} foi banido.")));
 
-            var config = new JSONReader();
-            await config.ReadJSON();
-            await ModerationLog.RecordAsync(ctx.Client, config, "Banimento", user, ctx.User, reason,
+            await ModerationLog.RecordAsync(ctx.Client, "Banimento", user, ctx.User, reason,
                 deleteDays > 0 ? $"Mensagens dos últimos {deleteDays} dia(s) apagadas." : null);
         }
 
@@ -88,7 +93,7 @@ namespace CommunityBot.commands
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
 
-            var member = await TryGetMemberAsync(ctx, user.Id);
+            var member = await Hierarchy.TryGetMemberAsync(ctx, user.Id);
             if (member is null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
@@ -117,9 +122,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Expulso", $"{user.Mention} foi expulso.")));
 
-            var config = new JSONReader();
-            await config.ReadJSON();
-            await ModerationLog.RecordAsync(ctx.Client, config, "Expulsão", user, ctx.User, reason);
+            await ModerationLog.RecordAsync(ctx.Client, "Expulsão", user, ctx.User, reason);
         }
 
         [SlashCommand("timeout", "Silencia um usuário por um tempo", (long)Permissions.ModerateMembers)]
@@ -141,7 +144,7 @@ namespace CommunityBot.commands
                 return;
             }
 
-            var member = await TryGetMemberAsync(ctx, user.Id);
+            var member = await Hierarchy.TryGetMemberAsync(ctx, user.Id);
             if (member is null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
@@ -171,9 +174,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Silenciado", $"{user.Mention} ficou silenciado por {describe}.")));
 
-            var config = new JSONReader();
-            await config.ReadJSON();
-            await ModerationLog.RecordAsync(ctx.Client, config, "Silenciamento", user, ctx.User, reason,
+            await ModerationLog.RecordAsync(ctx.Client, "Silenciamento", user, ctx.User, reason,
                 $"Duração: {describe}");
         }
 
@@ -188,11 +189,23 @@ namespace CommunityBot.commands
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
 
-            var member = await TryGetMemberAsync(ctx, user.Id);
+            var member = await Hierarchy.TryGetMemberAsync(ctx, user.Id);
             if (member is null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                     Embeds.Error("Fora do servidor", $"{user.Mention} não está neste servidor.")));
+                return;
+            }
+
+            // Tirar um silenciamento e ato de moderacao como qualquer outro: sem
+            // esta checagem, um mod com ModerateMembers desfazia o silenciamento
+            // que um admin acima dele tinha aplicado. O README ja afirmava que
+            // "toda punicao passa por uma checagem de hierarquia antes"; aqui e
+            // /purge eram as duas excecoes que desmentiam a frase.
+            var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member, ctx.Guild!.CurrentMember);
+            if (blocked is not null)
+            {
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(blocked));
                 return;
             }
 
@@ -210,14 +223,16 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Liberado", $"{user.Mention} não está mais silenciado.")));
 
-            var config = new JSONReader();
-            await config.ReadJSON();
-            await ModerationLog.RecordAsync(ctx.Client, config, "Silenciamento removido", user, ctx.User, reason);
+            await ModerationLog.RecordAsync(ctx.Client, "Silenciamento removido", user, ctx.User, reason);
         }
 
+        // ReadMessageHistory alem de ManageMessages: o GetMessagesAsync abaixo
+        // precisa dela, e sem declara-la aqui a falta de permissao virava excecao
+        // crua da API no meio da execucao - exatamente o que o RequireBotPermissions
+        // existe para evitar.
         [SlashCommand("purge", "Apaga mensagens recentes do canal", (long)Permissions.ManageMessages)]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageMessages)]
-        [ApplicationCommandRequireBotPermissions(Permissions.ManageMessages)]
+        [ApplicationCommandRequireBotPermissions(Permissions.ManageMessages | Permissions.ReadMessageHistory)]
         public async Task PurgeCommand(
             InteractionContext ctx,
             [Option("quantidade", "Quantas mensagens olhar (1 a 100)")] long amount,
@@ -231,6 +246,23 @@ namespace CommunityBot.commands
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                     Embeds.Error("Valor inválido", "A quantidade precisa ficar entre 1 e 100.")));
                 return;
+            }
+
+            // Com filtro de usuario, o /purge e uma acao CONTRA alguem, e passa
+            // pela mesma hierarquia do resto. Sem filtro e limpeza de canal, que
+            // nao tem alvo - por isso a checagem so acontece quando ha um.
+            if (user is not null)
+            {
+                var member = await Hierarchy.TryGetMemberAsync(ctx, user.Id);
+                if (member is not null)
+                {
+                    var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member, ctx.Guild!.CurrentMember);
+                    if (blocked is not null)
+                    {
+                        await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(blocked));
+                        return;
+                    }
+                }
             }
 
             try
@@ -254,18 +286,23 @@ namespace CommunityBot.commands
                     return;
                 }
 
-                await ctx.Channel.DeleteMessagesAsync(target, Reason(ctx, null));
+                // Uma mensagem so nao pode ir pelo bulk delete: o endpoint exige
+                // de 2 a 100 ids e responde 400 com um unico, o que virava
+                // "Falha ao apagar" para o caso mais banal - /purge quantidade:1,
+                // ou um filtro de usuario que casou com so uma mensagem.
+                if (target.Count == 1)
+                    await target[0].DeleteAsync(Reason(ctx, null));
+                else
+                    await ctx.Channel.DeleteMessagesAsync(target, Reason(ctx, null));
 
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                     Embeds.Ok("Limpeza concluída",
                         $"{target.Count} mensagem(ns) apagada(s)" + (user is null ? "." : $" de {user.Mention}."))));
 
-                var config = new JSONReader();
-                await config.ReadJSON();
                 // Sem filtro de usuario nao existe "alvo": passar ctx.User aqui
                 // fazia o embed dizer "Usuario: @mod / Moderador: @mod", como se
                 // o moderador tivesse feito uma limpeza contra si mesmo.
-                await ModerationLog.RecordAsync(ctx.Client, config, "Limpeza de mensagens",
+                await ModerationLog.RecordAsync(ctx.Client, "Limpeza de mensagens",
                     user, ctx.User, null,
                     $"{target.Count} mensagem(ns) em {ctx.Channel.Mention}");
             }
@@ -397,34 +434,14 @@ namespace CommunityBot.commands
                     "uma permissão de escrita concedida explicitamente ao @everyone antes do /lock, " +
                     "confira as permissões: ela precisa ser reposta à mão.")));
 
-            var config = new JSONReader();
-            await config.ReadJSON();
-            await ModerationLog.RecordAsync(ctx.Client, config,
+            // target = null: um lock/unlock nao tem usuario-alvo. Passar ctx.User
+            // aqui (como antes) fazia o embed sair com "Usuário: @mod / Moderador:
+            // @mod", como se o moderador tivesse agido contra si mesmo - o mesmo
+            // bug que o comentario do /purge diz ter corrigido. O canal vai no
+            // campo de detalhes.
+            await ModerationLog.RecordAsync(ctx.Client,
                 locked ? "Canal fechado" : "Canal reaberto",
-                ctx.User, ctx.User, reason, ctx.Channel.Mention);
-        }
-
-        /// <summary>
-        /// Busca o membro. Devolve null SO quando ele de fato nao esta no
-        /// servidor.
-        ///
-        /// O catch aberto de antes engolia tambem rate limit, 5xx e falha de
-        /// rede - e o chamador trata null como "saiu do servidor" e PULA a
-        /// checagem de hierarquia. Ou seja, a checagem falhava aberta: numa
-        /// instabilidade qualquer, um moderador com apenas Ban Members conseguia
-        /// punir alguem acima dele. Agora so o NotFound vira null; o resto sobe
-        /// e o comando falha de forma visivel, que e o lado certo para errar.
-        /// </summary>
-        private static async Task<DiscordMember?> TryGetMemberAsync(InteractionContext ctx, ulong userId)
-        {
-            try
-            {
-                return await ctx.Guild!.GetMemberAsync(userId);
-            }
-            catch (DisCatSharp.Exceptions.NotFoundException)
-            {
-                return null;
-            }
+                null, ctx.User, reason, ctx.Channel.Mention);
         }
 
         /// <summary>

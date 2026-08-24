@@ -23,7 +23,15 @@ namespace CommunityBot.Services
     {
         private readonly TextWriter _inner;
         private readonly StringBuilder _pending = new();
-        private readonly object _lock = new();
+
+        // Lock COMPARTILHADO entre as duas instancias (Out e Error). Cada uma
+        // tinha o seu proprio lock, entao uma escrita em stdout e outra em stderr
+        // rodavam ao mesmo tempo e intercalavam caractere a caractere no
+        // BotLogBuffer, produzindo linhas corrompidas no /logs. Com um lock so,
+        // cada chamada de Write e atomica; o _pending continua por instancia,
+        // porque stdout e stderr sao fluxos distintos e cada um mantem a sua
+        // propria linha parcial.
+        private static readonly object s_lock = new();
 
         private static int s_installed;
 
@@ -51,7 +59,7 @@ namespace CommunityBot.Services
 
         public override void Write(char value)
         {
-            lock (_lock)
+            lock (s_lock)
             {
                 _inner.Write(value);
                 Accumulate(value);
@@ -63,7 +71,7 @@ namespace CommunityBot.Services
             if (value is null)
                 return;
 
-            lock (_lock)
+            lock (s_lock)
             {
                 _inner.Write(value);
                 Accumulate(value);
@@ -72,7 +80,7 @@ namespace CommunityBot.Services
 
         public override void Write(char[] buffer, int index, int count)
         {
-            lock (_lock)
+            lock (s_lock)
             {
                 _inner.Write(buffer, index, count);
                 for (var i = 0; i < count; i++)
@@ -82,7 +90,7 @@ namespace CommunityBot.Services
 
         public override void WriteLine()
         {
-            lock (_lock)
+            lock (s_lock)
             {
                 _inner.WriteLine();
                 FlushLine();
@@ -91,7 +99,7 @@ namespace CommunityBot.Services
 
         public override void WriteLine(string? value)
         {
-            lock (_lock)
+            lock (s_lock)
             {
                 _inner.WriteLine(value);
                 Accumulate(value ?? string.Empty);
@@ -99,14 +107,24 @@ namespace CommunityBot.Services
             }
         }
 
-        public override void Flush() => _inner.Flush();
+        public override void Flush()
+        {
+            lock (s_lock)
+            {
+                // Drena a ultima linha sem \n antes de repassar o flush: no
+                // encerramento (ou num Console.Out.Flush() explicito) ela seria
+                // perdida do buffer, embora ja estivesse no stdout.
+                FlushLine();
+                _inner.Flush();
+            }
+        }
 
         /// <summary>
         /// Acumula texto solto ate encontrar uma quebra de linha. Sem isto, um
         /// Console.Write sem WriteLine (ou os overloads que a base decompoe em
         /// varias chamadas) viraria uma entrada de log por pedaco.
         ///
-        /// Chamado sempre com <see cref="_lock"/> ja tomado.
+        /// Chamado sempre com <see cref="s_lock"/> ja tomado.
         /// </summary>
         private void Accumulate(string value)
         {

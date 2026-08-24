@@ -5,9 +5,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# O bot resolve config/ e data/ a partir do cwd.
+# O bot resolve config/ e data/ a partir do diretorio do EXECUTAVEL
+# (AppContext.BaseDirectory), nao do cwd - entao esta linha nao e mais o que
+# faz o config ser encontrado. Fica porque um cwd previsivel ainda ajuda em
+# caminhos relativos que apareçam em log e em core dump.
 WorkingDirectory=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot
-ExecStart=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot/bin/Debug/net9.0/CommunityBot
+# Release, nao Debug: Debug sai sem otimizacao e com as assercoes ligadas.
+# Publicar com `dotnet publish -c Release -o bin/Release/net9.0` antes do
+# primeiro start (ver README).
+ExecStart=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot/bin/Release/net9.0/CommunityBot
 
 # O IPv6 de saida desta maquina nao funciona; sem isto o .NET perde tempo em
 # timeouts ao falar com a API do Discord. Mesmo motivo do ccore-bot.service.

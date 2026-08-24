@@ -9,6 +9,24 @@
     <AssemblyName>CommunityBot</AssemblyName>
   </PropertyGroup>
 
+  <!--
+    O bot resolve config/ e data/ a partir de AppContext.BaseDirectory, entao o
+    config precisa existir AO LADO do executavel. Sem esta copia o binario em
+    bin/ nao acharia o arquivo nenhum.
+
+    config.jsonc entra com Condition: ele esta no .gitignore e pode nao existir
+    numa maquina recem-clonada, e um Include sem condicao faria o build falhar
+    com "item nao encontrado" antes mesmo da mensagem amigavel do Program.Main.
+
+    PreserveNewest, e nao Always: editar o config e recarregado em runtime pelo
+    carimbo de modificacao, e sobrescrever a copia a cada build apagaria uma
+    edicao feita direto em bin/.
+  -->
+  <ItemGroup>
+    <None Include="config\config.example.jsonc" CopyToOutputDirectory="PreserveNewest" Link="config\config.example.jsonc" />
+    <None Include="config\config.jsonc" CopyToOutputDirectory="PreserveNewest" Link="config\config.jsonc" Condition="Exists('config\config.jsonc')" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="DisCatSharp" Version="10.7.0" />
     <PackageReference Include="DisCatSharp.ApplicationCommands" Version="10.7.0" />

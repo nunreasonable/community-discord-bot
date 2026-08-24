@@ -40,21 +40,30 @@ namespace CommunityBot.commands
                 return;
             }
 
-            var member = await TryGetMemberAsync(ctx, user.Id);
-            if (member is not null)
+            // Recusa quando o alvo nao esta no servidor, igual a /kick e /timeout.
+            // Sem isto, um moderador com apenas ModerateMembers advertia alguem que
+            // saiu temporariamente - inclusive um admin acima dele -, e a
+            // advertencia (indexada por userId) reaparecia quando a pessoa voltava,
+            // pulando a checagem de hierarquia que so da para fazer com o membro
+            // presente.
+            var member = await Hierarchy.TryGetMemberAsync(ctx, user.Id);
+            if (member is null)
             {
-                var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member,
-                    ctx.Guild!.CurrentMember);
-                if (blocked is not null)
-                {
-                    await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(blocked));
-                    return;
-                }
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                    Embeds.Error("Fora do servidor", $"{user.Mention} não está neste servidor.")));
+                return;
+            }
+
+            var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member,
+                ctx.Guild!.CurrentMember);
+            if (blocked is not null)
+            {
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(blocked));
+                return;
             }
 
             var warning = new Warning
             {
-                id = WarningStore.NewId(),
                 guildId = ctx.Guild!.Id,
                 userId = user.Id,
                 moderatorId = ctx.User.Id,
@@ -63,19 +72,21 @@ namespace CommunityBot.commands
                 createdAtUtc = DateTimeOffset.UtcNow
             };
 
-            var total = await WarningStore.Instance.UpdateAsync(file =>
+            var total = await WarningStore.Instance.UpdateAsync(edit =>
             {
-                file.warnings.Add(warning);
-                return file.warnings.Count(w => w.guildId == warning.guildId && w.userId == warning.userId);
+                // Id gerado aqui dentro, com o arquivo em maos: garante unicidade
+                // sem corrida (ver WarningStore.NewUniqueId).
+                warning.id = WarningStore.NewUniqueId(edit.File);
+                edit.File.warnings.Add(warning);
+                edit.MarkChanged();
+                return edit.File.warnings.Count(w => w.guildId == warning.guildId && w.userId == warning.userId);
             });
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Advertência registrada",
                     $"{user.Mention} agora tem **{total}** advertência(s).\nId desta: `{warning.id}`")));
 
-            var config = new JSONReader();
-            await config.ReadJSON();
-            await ModerationLog.RecordAsync(ctx.Client, config, "Advertência", user, ctx.User, reason,
+            await ModerationLog.RecordAsync(ctx.Client, "Advertência", user, ctx.User, reason,
                 $"Id `{warning.id}` — total de {total}");
         }
 
@@ -127,20 +138,21 @@ namespace CommunityBot.commands
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
 
-            var wanted = (id ?? string.Empty).Trim();
+            var wanted = id.Trim();
             var guildId = ctx.Guild!.Id;
 
-            var removed = await WarningStore.Instance.UpdateAsync(file =>
+            var removed = await WarningStore.Instance.UpdateAsync(edit =>
             {
                 // Preso ao servidor de propósito: um id de outro servidor não pode
                 // ser apagado a partir daqui.
-                var target = file.warnings.FirstOrDefault(w =>
+                var target = edit.File.warnings.FirstOrDefault(w =>
                     w.guildId == guildId && string.Equals(w.id, wanted, StringComparison.OrdinalIgnoreCase));
 
                 if (target is null)
                     return null;
 
-                file.warnings.Remove(target);
+                edit.File.warnings.Remove(target);
+                edit.MarkChanged();
                 return target;
             });
 
@@ -155,33 +167,20 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Advertência removida", $"A advertência `{removed.id}` de <@{removed.userId}> foi apagada.")));
 
-            var config = new JSONReader();
-            await config.ReadJSON();
-            var target = await ctx.Client.GetUserAsync(removed.userId);
-            await ModerationLog.RecordAsync(ctx.Client, config, "Advertência removida", target, ctx.User,
-                removed.reason, $"Id `{removed.id}`, registrada originalmente por <@{removed.moderatorId}>");
-        }
-
-        /// <summary>
-        /// Busca o membro. Devolve null SO quando ele de fato nao esta no
-        /// servidor.
-        ///
-        /// O catch aberto de antes engolia tambem rate limit, 5xx e falha de
-        /// rede - e o chamador trata null como "saiu do servidor" e PULA a
-        /// checagem de hierarquia. Ou seja, a checagem falhava aberta: numa
-        /// instabilidade qualquer, um moderador com apenas Ban Members conseguia
-        /// punir alguem acima dele. Agora so o NotFound vira null; o resto sobe
-        /// e o comando falha de forma visivel, que e o lado certo para errar.
-        /// </summary>
-        private static async Task<DiscordMember?> TryGetMemberAsync(InteractionContext ctx, ulong userId)
-        {
+            // Tudo o que vem DEPOIS do "sucesso" acima e best-effort. O
+            // GetUserAsync em especial: a conta pode ter sido apagada, e uma
+            // excecao aqui chegaria ao SlashCommandErrored, que edita a mesma
+            // resposta original - o moderador veria "Falha no comando" numa
+            // advertencia que de fato foi removida.
             try
             {
-                return await ctx.Guild!.GetMemberAsync(userId);
+                var target = await ctx.Client.GetUserAsync(removed.userId);
+                await ModerationLog.RecordAsync(ctx.Client, "Advertência removida", target, ctx.User,
+                    removed.reason, $"Id `{removed.id}`, registrada originalmente por <@{removed.moderatorId}>");
             }
-            catch (DisCatSharp.Exceptions.NotFoundException)
+            catch (Exception ex)
             {
-                return null;
+                Console.WriteLine($"[warnings] falha ao registrar a remocao de {removed.id}: {ex.Message}");
             }
         }
     }

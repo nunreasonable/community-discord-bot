@@ -23,17 +23,29 @@ Os comandos são todos novos — os do ccore são do regimento e não vieram jun
    ```
    `config.jsonc` está no `.gitignore` justamente por causa do token.
 4. Convide o bot com as permissões que os comandos exigem: Ban Members,
-   Kick Members, Moderate Members, Manage Messages, Manage Channels e Manage Roles.
-5. `dotnet build CommunityBot/CommunityBot.csproj && dotnet run --project CommunityBot`
+   Kick Members, Moderate Members, Manage Messages, Manage Channels, Manage Roles,
+   Read Message History e Add Reactions.
+5. `dotnet run --project CommunityBot`
+
+O `config/` é copiado para junto do executável no build, e o bot resolve
+`config/` e `data/` a partir do diretório do binário — não do diretório de onde
+você chamou o comando. Por isso o passo 5 funciona de qualquer lugar do
+repositório. (Até agosto/2026 os caminhos eram relativos ao cwd e este mesmo
+comando, rodado da raiz, saía com "não consegui ler config/config.jsonc".)
 
 Para subir como serviço:
 
 ```bash
+dotnet publish CommunityBot/CommunityBot.csproj -c Release -o CommunityBot/bin/Release/net9.0
 cp community-bot.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now community-bot
 journalctl --user -u community-bot -f
 ```
+
+O `publish -c Release` não é opcional: a unit aponta para
+`bin/Release/net9.0/CommunityBot`. Antes ela apontava para o build de **Debug**,
+que roda sem otimização e com as asserções ligadas.
 
 ## Config
 
@@ -55,7 +67,15 @@ configurar à mão.
 O `/timeout` aceita duração escrita como gente escreve — `10m`, `2h30m`, `1d` —
 com o teto de 28 dias que o Discord impõe. Toda punição passa por uma checagem de
 hierarquia antes: ninguém modera o dono do servidor, a si mesmo, alguém de cargo
-igual ou mais alto, nem alguém acima do próprio bot.
+igual ou mais alto, nem alguém acima do próprio bot. Isso vale também para o
+`/untimeout` e para o `/purge` com filtro de usuário — tirar um silenciamento e
+apagar as mensagens de alguém são atos contra aquela pessoa como qualquer outro.
+Um `/purge` sem filtro é limpeza de canal e não tem alvo, então não há
+hierarquia a conferir.
+
+A checagem falha **fechada**: se o bot não conseguir ler o próprio cargo no
+servidor (cache frio logo após conectar), o comando é recusado com uma mensagem
+explicando, em vez de seguir sem conferir.
 
 O `/purge` ignora mensagem com mais de 14 dias, porque a API recusa apagá-las em
 lote e uma só delas derrubaria a chamada inteira.

@@ -37,7 +37,12 @@ namespace CommunityBot.Services
 
             foreach (var ch in text)
             {
-                if (char.IsDigit(ch))
+                // ASCII 0-9 apenas, e nao char.IsDigit: este ultimo aceita toda a
+                // categoria Unicode Nd (٣, ৩, ๓...), que o long.TryParse com
+                // NumberStyles.None/InvariantCulture depois recusa - o resultado
+                // era a mensagem de erro ERRADA ("Número grande demais.") para uma
+                // entrada que na verdade tem caractere invalido.
+                if (ch >= '0' && ch <= '9')
                 {
                     number.Append(ch);
                     continue;

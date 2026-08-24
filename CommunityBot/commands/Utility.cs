@@ -7,6 +7,7 @@ using DisCatSharp.ApplicationCommands;
 using DisCatSharp.ApplicationCommands.Attributes;
 using DisCatSharp.ApplicationCommands.Context;
 using DisCatSharp.Entities;
+using DisCatSharp.Exceptions;
 using DisCatSharp.Enums;
 using DisCatSharp.Enums.Core;
 
@@ -48,10 +49,13 @@ namespace CommunityBot.commands
             {
                 member = await ctx.Guild!.GetMemberAsync(target.Id);
             }
-            catch
+            catch (NotFoundException)
             {
-                // Usuario fora do servidor: os campos de membro simplesmente nao
-                // aparecem, em vez de o comando falhar.
+                // SO o "usuario nao esta no servidor". O catch sem filtro que
+                // estava aqui engolia tambem rate limit, 5xx e cancelamento, e
+                // todos viravam a mesma afirmacao falsa no rodape ("nao esta
+                // neste servidor") - sem deixar nada no BotLogBuffer para o
+                // /logs diagnosticar.
             }
 
             if (member is not null)
@@ -71,9 +75,15 @@ namespace CommunityBot.commands
                 embed.AddField(new DiscordEmbedField($"Cargos ({roles.Count})",
                     roles.Count == 0 ? "*nenhum*" : Embeds.Trim(string.Join(" ", roles), 1000), false));
 
-                if (member.CommunicationDisabledUntil is { } mutedUntil && mutedUntil > DateTime.UtcNow)
+                // ToUniversalTime em vez de SpecifyKind: o SpecifyKind RE-ROTULA o
+                // valor sem converter, entao um DateTime que chegasse com Kind
+                // Local seria tratado como se ja fosse UTC e o horario exibido
+                // sairia deslocado pelo fuso da maquina. ToUniversalTime esta
+                // correto para qualquer Kind.
+                if (member.CommunicationDisabledUntil is { } mutedUntil
+                    && mutedUntil.ToUniversalTime() > DateTime.UtcNow)
                 {
-                    var until = new DateTimeOffset(DateTime.SpecifyKind(mutedUntil, DateTimeKind.Utc));
+                    var until = new DateTimeOffset(mutedUntil.ToUniversalTime(), TimeSpan.Zero);
                     embed.AddField(new DiscordEmbedField("Silenciado até",
                         $"<t:{until.ToUnixTimeSeconds()}:f>", true));
                 }
@@ -95,7 +105,9 @@ namespace CommunityBot.commands
             var guild = ctx.Guild!;
 
             // Em locais tipados: as coleções e o enum são nullable no contrato do
-            // DisCatSharp, e o embed não aceita valor nulo.
+            // DisCatSharp, e o embed não aceita valor nulo. Os `?? "—"` NAO sao
+            // decorativos - tirar qualquer um dos dois faz o compilador apontar
+            // CS8604 no DiscordEmbedField logo abaixo.
             var members = guild.MemberCount.ToString() ?? "—";
             var roleCount = (guild.Roles?.Count ?? 0).ToString();
             var channelCount = (guild.Channels?.Count ?? 0).ToString();
@@ -121,6 +133,7 @@ namespace CommunityBot.commands
 
         [SlashCommand("poll", "Cria uma enquete de sim/não com botões")]
         [ApplicationCommandRequireGuild]
+        [ApplicationCommandRequireBotPermissions(Permissions.AddReactions | Permissions.ReadMessageHistory)]
         [SlashCommandCooldown(2, 30, CooldownBucketType.User)]
         public async Task PollCommand(
             InteractionContext ctx,
@@ -137,9 +150,22 @@ namespace CommunityBot.commands
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AddEmbed(embed));
 
-            var message = await ctx.GetOriginalResponseAsync();
-            await message.CreateReactionAsync(DiscordEmoji.FromUnicode("👍"));
-            await message.CreateReactionAsync(DiscordEmoji.FromUnicode("👎"));
+            // Falha ao reagir NAO pode escapar daqui.
+            //
+            // A enquete ja foi publicada neste ponto. Se a excecao subisse, o
+            // SlashCommandErrored chamaria EditResponseAsync e substituiria o
+            // embed da enquete pelo embed de erro - a enquete simplesmente
+            // desaparecia por causa de uma reacao que nao foi.
+            try
+            {
+                var message = await ctx.GetOriginalResponseAsync();
+                await message.CreateReactionAsync(DiscordEmoji.FromUnicode("👍"));
+                await message.CreateReactionAsync(DiscordEmoji.FromUnicode("👎"));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[poll] nao consegui reagir na enquete: {ex.Message}");
+            }
         }
 
         [SlashCommand("help", "Lista os comandos disponíveis")]

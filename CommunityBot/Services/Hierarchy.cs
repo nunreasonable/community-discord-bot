@@ -1,5 +1,8 @@
 using System.Linq;
+using System.Threading.Tasks;
+using DisCatSharp.ApplicationCommands.Context;
 using DisCatSharp.Entities;
+using DisCatSharp.Exceptions;
 
 namespace CommunityBot.Services
 {
@@ -15,9 +18,25 @@ namespace CommunityBot.Services
     /// </summary>
     internal static class Hierarchy
     {
-        /// <summary>Retorna null quando a acao e permitida, ou o embed de recusa.</summary>
-        public static DiscordEmbed? Check(DiscordGuild guild, DiscordMember actor, DiscordMember target, DiscordMember bot)
+        /// <summary>
+        /// Retorna null quando a acao e permitida, ou o embed de recusa.
+        ///
+        /// <paramref name="bot"/> e nullable porque a origem dele -
+        /// <c>guild.CurrentMember</c> - pode vir nula com o cache frio, logo
+        /// depois do connect. Antes o parametro era nao-nulo e os chamadores
+        /// passavam esse valor mesmo assim (quatro CS8604): o `bot.Id` da linha
+        /// seguinte lancava NullReferenceException e o moderador via um generico
+        /// "Algo quebrou" - falha ABERTA, porque a checagem nao chegava a rodar.
+        /// Agora, sem saber onde o bot esta na hierarquia, a resposta e recusar.
+        /// </summary>
+        public static DiscordEmbed? Check(DiscordGuild guild, DiscordMember actor, DiscordMember target, DiscordMember? bot)
         {
+            if (bot is null)
+            {
+                return Embeds.Error("Hierarquia indisponível",
+                    "Não consegui ler o meu próprio cargo neste servidor agora, então não dá para conferir a hierarquia. Tente de novo em alguns segundos.");
+            }
+
             if (target.Id == actor.Id)
                 return Embeds.Error("Alvo inválido", "Você não pode aplicar isso em você mesmo.");
 
@@ -42,6 +61,33 @@ namespace CommunityBot.Services
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Busca o membro. Devolve null SO quando ele de fato nao esta no
+        /// servidor.
+        ///
+        /// O catch aberto de antes engolia tambem rate limit, 5xx e falha de
+        /// rede - e o chamador trata null como "saiu do servidor" e PULA a
+        /// checagem de hierarquia. Ou seja, a checagem falhava aberta: numa
+        /// instabilidade qualquer, um moderador com apenas Ban Members conseguia
+        /// punir alguem acima dele. Agora so o NotFound vira null; o resto sobe
+        /// e o comando falha de forma visivel, que e o lado certo para errar.
+        ///
+        /// Mora aqui, e nao em cada modulo de comando: Moderation e Warnings
+        /// tinham copias byte a byte deste metodo, entao a proxima correcao
+        /// entraria em so uma das duas.
+        /// </summary>
+        public static async Task<DiscordMember?> TryGetMemberAsync(InteractionContext ctx, ulong userId)
+        {
+            try
+            {
+                return await ctx.Guild!.GetMemberAsync(userId);
+            }
+            catch (NotFoundException)
+            {
+                return null;
+            }
         }
 
         /// <summary>
