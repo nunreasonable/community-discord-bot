@@ -3,11 +3,25 @@
     // token la - config.jsonc esta no .gitignore justamente por causa disto.
     "token": "",
 
-    // Servidores onde os comandos sao registrados na hora. Lista vazia registra
-    // globalmente, o que propaga em ate uma hora.
-    "guildIds": [],
+    // ATALHO DE DESENVOLVIMENTO. Vazio - o normal - registra os comandos
+    // GLOBALMENTE, e o Discord os anexa a todo servidor onde o bot for
+    // instalado com o escopo applications.commands, inclusive os que ele entrar
+    // depois. Nao ha nada a fazer por servidor.
+    //
+    // Preencher inverte isso: os comandos passam a existir SO nesses servidores
+    // (aparecem na hora, o que ajuda a iterar) e o bot fica sem comando em todo
+    // o resto - servidor novo inclusive. Voltar para global exige uma subida com
+    // a lista vazia, que e quando o bot recolhe as copias por servidor; sem isso
+    // elas se somam as globais e cada comando aparece duas vezes.
+    "guildIds": []
 
-    // Canal que recebe um embed por acao de moderacao. Sem ele o bot funciona,
-    // mas nada fica registrado fora do proprio Discord.
-    "moderationLogChannelId": null
+    // O RESTO DA CONFIGURACAO NAO MORA MAIS AQUI.
+    //
+    // Canal de log de moderacao, canal-armadilha do softban automatico e os tres
+    // ajustes de ticket agora sao POR SERVIDOR, e quem os define e quem tem
+    // Gerenciar Servidor, pelo comando /config - sem precisar de acesso a esta
+    // maquina. Use /config ver para ver como esta.
+    //
+    // Se voce ja tinha as chaves antigas preenchidas aqui, o bot as move sozinho
+    // para o novo formato na primeira subida.
 }

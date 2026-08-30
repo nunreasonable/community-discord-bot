@@ -14,7 +14,15 @@ namespace CommunityBot.config
     {
         public string? token { get; private set; }
         public ulong[]? guildIds { get; private set; }
+        // LEGADO. Estas seis chaves saíram do arquivo e viraram configuracao por
+        // servidor, escrita pelo /config. Continuam sendo lidas para a migracao
+        // unica do LegacyConfigMigration, e nada mais as consulta.
         public ulong? moderationLogChannelId { get; private set; }
+        public ulong? autoSoftbanGuildId { get; private set; }
+        public ulong? autoSoftbanChannelId { get; private set; }
+        public ulong? ticketCategoryId { get; private set; }
+        public ulong? ticketStaffRoleId { get; private set; }
+        public ulong? ticketLogChannelId { get; private set; }
 
         private static readonly string ConfigPath = AppPaths.Config("config.jsonc");
 
@@ -46,6 +54,11 @@ namespace CommunityBot.config
             token = data?.token;
             guildIds = data?.guildIds;
             moderationLogChannelId = data?.moderationLogChannelId;
+            autoSoftbanGuildId = data?.autoSoftbanGuildId;
+            autoSoftbanChannelId = data?.autoSoftbanChannelId;
+            ticketCategoryId = data?.ticketCategoryId;
+            ticketStaffRoleId = data?.ticketStaffRoleId;
+            ticketLogChannelId = data?.ticketLogChannelId;
         }
 
         /// <summary>
@@ -75,7 +88,16 @@ namespace CommunityBot.config
                     return cached.Data;
 
                 var json = await File.ReadAllTextAsync(ConfigPath).ConfigureAwait(false);
-                var data = JsonConvert.DeserializeObject<JSONStructure>(json);
+
+                // Arquivo vazio (ou com o literal `null`) desserializa para NULL
+                // SEM LANCAR. Aceitando isso, uma janela de truncamento no meio de
+                // uma edicao - todo editor que escreve por truncate-then-write tem
+                // uma - fazia todas as chaves virarem nulas: o vigia de canal se
+                // desarmava sozinho e anunciava no log "desligado pelo config",
+                // como se alguem tivesse pedido. Tratar como leitura falha mantem
+                // o valor anterior de pe, que e o que o AutoSoftban documenta.
+                var data = JsonConvert.DeserializeObject<JSONStructure>(json)
+                    ?? throw new JsonException("config/config.jsonc esta vazio ou contem apenas 'null'.");
 
                 // Rele o carimbo DEPOIS do conteudo. Se o arquivo mudou entre o
                 // GetLastWriteTimeUtc de cima e o ReadAllText, cachear com o
@@ -100,7 +122,45 @@ namespace CommunityBot.config
         /// <summary>Vazio ou ausente registra os comandos globalmente.</summary>
         public ulong[]? guildIds { get; set; }
 
-        /// <summary>Canal que recebe um embed por acao de moderacao.</summary>
+        /// <summary>
+        /// LEGADO, so para a migracao. Ver LegacyConfigMigration: estas seis
+        /// chaves viraram configuracao por servidor e hoje se definem pelo
+        /// /config. Manter aqui e o que permite trazer a configuracao antiga sem
+        /// o operador redigitar nada.
+        /// </summary>
         public ulong? moderationLogChannelId { get; set; }
+
+        /// <summary>
+        /// Servidor e canal vigiados pelo auto-softban. Os DOIS precisam estar
+        /// preenchidos; com qualquer um deles nulo ou zero o vigia fica inerte.
+        /// Sao chaves proprias de proposito: guildIds e registro de comando, e
+        /// moderationLogChannelId e o destino do log - nenhum dos dois diz nada
+        /// sobre onde vigiar.
+        /// </summary>
+        public ulong? autoSoftbanGuildId { get; set; }
+
+        /// <inheritdoc cref="autoSoftbanGuildId"/>
+        public ulong? autoSoftbanChannelId { get; set; }
+
+        /// <summary>
+        /// Categoria onde os canais de ticket nascem, e cargo que enxerga todo
+        /// ticket. Os DOIS precisam estar preenchidos: sem categoria nao ha onde
+        /// criar, e sem cargo nao ha como dar acesso a equipe - o acesso e um
+        /// permission overwrite, e overwrite aponta para um cargo ou um membro,
+        /// nunca para "quem tem tal permissao".
+        /// </summary>
+        public ulong? ticketCategoryId { get; set; }
+
+        /// <inheritdoc cref="ticketCategoryId"/>
+        public ulong? ticketStaffRoleId { get; set; }
+
+        /// <summary>
+        /// Canal que recebe o transcript e o registro de abertura/fechamento dos
+        /// tickets. Chave propria, e nao o moderationLogChannelId: transcript e
+        /// arquivo grande e frequente, e afogaria o registro de ban e
+        /// advertencia. Sem ele nao ha como arquivar, e o fechamento passa a
+        /// trancar o canal em vez de apagar.
+        /// </summary>
+        public ulong? ticketLogChannelId { get; set; }
     }
 }

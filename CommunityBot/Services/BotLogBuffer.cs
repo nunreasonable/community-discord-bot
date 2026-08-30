@@ -20,7 +20,7 @@ namespace CommunityBot.Services
     ///
     /// Por que um buffer em memoria e nao um arquivo ou o journald: o bot ja
     /// escreve tudo com Console.WriteLine, e essa saida so era legivel com
-    /// acesso SSH a maquina (`journalctl --user -u ccore-bot`). Guardando as
+    /// acesso SSH a maquina (`journalctl --user -u community-bot`). Guardando as
     /// linhas aqui, o /logs e o dashboard leem o mesmo historico sem depender
     /// de como o processo foi iniciado - servico, `dotnet run` ou terminal.
     ///
@@ -71,8 +71,11 @@ namespace CommunityBot.Services
                 if (string.IsNullOrWhiteSpace(text))
                     return;
 
-                if (text.Length > MaxLineLength)
-                    text = text.Substring(0, MaxLineLength - 1) + "…";
+                // Embeds.Trim, e nao Substring: o corte cru podia cair no meio de
+                // um par substituto (um emoji num nome de canal, por exemplo) e
+                // deixar meio caractere, que o Discord mostra como "<?>". O Trim
+                // ja resolve isso e a regra passa a existir num lugar so.
+                text = Embeds.Trim(text, MaxLineLength);
 
                 var entry = new LogLine(DateTimeOffset.UtcNow, Classify(text), ExtractTag(text), text);
 
@@ -94,8 +97,7 @@ namespace CommunityBot.Services
 
         /// <summary>
         /// Recorte do buffer, do mais recente para o mais antigo - que e a ordem
-        /// em que se quer ler um log ao investigar algo, e a mesma de
-        /// /audit-logs.
+        /// em que se quer ler um log ao investigar algo.
         /// </summary>
         public static List<LogLine> Snapshot(int take, LogLevelTag? level = null, string? contains = null)
         {
@@ -159,7 +161,12 @@ namespace CommunityBot.Services
         {
             if (Has(text, "[fatal]") || Has(text, "[unobserved]") ||
                 Has(text, "erro") || Has(text, "falha") ||
-                Has(text, "exception") || Has(text, "unhandled"))
+                Has(text, "exception") || Has(text, "unhandled") ||
+                // O disjuntor do vigia de canal desliga o softban automatico ate
+                // o restart. E a linha mais importante que aquele codigo produz e
+                // nao casava com nenhuma palavra daqui - ficava arquivada como
+                // INFO, invisivel justamente em `/logs nivel:erro`.
+                Has(text, "disjuntor"))
                 return LogLevelTag.Erro;
 
             if (Has(text, "[pool]") || Has(text, "zumbi") ||

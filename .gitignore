@@ -6,6 +6,11 @@ CommunityBot/config/config.jsonc
 # renomeia. Se o processo morrer no meio, esse .tmp fica no disco com o
 # historico de moderacao de todos os servidores - e o padrao antigo nao o
 # pegava, entao um `git add -A` o levaria junto.
+#
+# Hoje esta regra e um cinto a mais: o AppPaths resolve data/ a partir do
+# diretorio do EXECUTAVEL, entao o arquivo real fica em
+# CommunityBot/bin/Release/net9.0/data/ e ja esta coberto pelo bin/ logo abaixo.
+# Fica de pe para o caso de alguem voltar a gravar aqui.
 CommunityBot/data/*.json*
 
 bin/

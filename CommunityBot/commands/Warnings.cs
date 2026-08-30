@@ -86,7 +86,7 @@ namespace CommunityBot.commands
                 Embeds.Ok("Advertência registrada",
                     $"{user.Mention} agora tem **{total}** advertência(s).\nId desta: `{warning.id}`")));
 
-            await ModerationLog.RecordAsync(ctx.Client, "Advertência", user, ctx.User, reason,
+            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Advertência", user, ctx.User, reason,
                 $"Id `{warning.id}` — total de {total}");
         }
 
@@ -141,6 +141,54 @@ namespace CommunityBot.commands
             var wanted = id.Trim();
             var guildId = ctx.Guild!.Id;
 
+            /*
+             * Hierarquia ANTES de apagar.
+             *
+             * O /warn passa por Hierarchy.Check; o /delwarn nao passava por nada,
+             * e qualquer um com ModerateMembers podia apagar qualquer advertencia
+             * do servidor - inclusive uma que um administrador acima dele
+             * escreveu, e inclusive as escritas contra ele mesmo. Apagar o
+             * registro de uma punicao e um ato de moderacao como tirar a punicao,
+             * que e o mesmo argumento ja aceito no /untimeout.
+             *
+             * O que se compara aqui e o MODERADOR QUE ESCREVEU, nao o advertido:
+             * apagar uma advertencia nao e um ato contra quem a levou - e um ato
+             * contra o registro de quem a aplicou. Mexer no que um superior
+             * escreveu exige estar acima dele. A propria advertencia continua
+             * livre para o autor dela apagar.
+             */
+            var existing = (await WarningStore.Instance.ReadAsync()).warnings
+                .FirstOrDefault(w => w.guildId == guildId &&
+                                     string.Equals(w.id, wanted, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null && existing.moderatorId != ctx.User.Id)
+            {
+                // `issuer is null` RECUSA, e nao libera: null aqui quer dizer que
+                // quem aplicou saiu do servidor, e sem o cargo dele nao da para
+                // dizer quem estava acima de quem. Liberando, bastava um admin
+                // deixar o servidor para as advertencias que ele escreveu
+                // virarem apagaveis por qualquer moderador - lavagem de ficha
+                // exatamente na hora em que ninguem esta olhando.
+                var issuer = await Hierarchy.TryGetMemberAsync(ctx, existing.moderatorId);
+                if (issuer is null)
+                {
+                    await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                        Embeds.Error("Hierarquia indisponível",
+                            "Quem aplicou essa advertência não está mais no servidor, então não dá para conferir " +
+                            "se você está acima dele. Só quem tem o cargo de administrador pode resolver isso à mão.")));
+                    return;
+                }
+
+                if (!Hierarchy.Outranks(ctx.Guild!, ctx.Member!, issuer))
+                {
+                    await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                        Embeds.Error("Hierarquia",
+                            $"Essa advertência foi aplicada por {issuer.Mention}, que tem cargo igual ou mais alto " +
+                            "que o seu. Só quem está acima dele — ou ele mesmo — pode apagá-la.")));
+                    return;
+                }
+            }
+
             var removed = await WarningStore.Instance.UpdateAsync(edit =>
             {
                 // Preso ao servidor de propósito: um id de outro servidor não pode
@@ -175,7 +223,7 @@ namespace CommunityBot.commands
             try
             {
                 var target = await ctx.Client.GetUserAsync(removed.userId);
-                await ModerationLog.RecordAsync(ctx.Client, "Advertência removida", target, ctx.User,
+                await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Advertência removida", target, ctx.User,
                     removed.reason, $"Id `{removed.id}`, registrada originalmente por <@{removed.moderatorId}>");
             }
             catch (Exception ex)

@@ -15,7 +15,7 @@ namespace CommunityBot.Services
     /// 1. Nenhum ponto de log existente precisa mudar, entao nao ha risco de um
     ///    deles ficar para tras e sumir do historico.
     /// 2. O stdout continua recebendo exatamente o que recebia, o que preserva o
-    ///    `journalctl --user -u ccore-bot` e a interface de terminal.
+    ///    `journalctl --user -u community-bot` e a interface de terminal.
     /// 3. Pega tambem o que o bot nao escreve de proposito - excecoes nao
     ///    observadas e qualquer coisa que uma dependencia jogue no console.
     /// </summary>

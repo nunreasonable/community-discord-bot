@@ -1,6 +1,5 @@
 using System;
 using System.Threading.Tasks;
-using CommunityBot.config;
 using DisCatSharp;
 using DisCatSharp.Entities;
 
@@ -29,29 +28,93 @@ namespace CommunityBot.Services
         /// punicao que tinha sido aplicada. Trazendo a leitura para dentro deste
         /// metodo, ela passa a ser coberta pelo mesmo catch do resto.
         /// </summary>
-        public static async Task RecordAsync(
-            DiscordClient client,
-            string action,
-            DiscordUser? target,
-            DiscordUser moderator,
-            string? reason,
-            string? extra = null)
+        /// <summary>
+        /// O canal de log e UM so para o processo inteiro, e o
+        /// client.GetChannelAsync resolve qualquer id em qualquer servidor onde o
+        /// bot esteja. Sem esta conferencia, com o bot em mais de um servidor -
+        /// que e o caso desde que o vigia de canal passou a apontar para um
+        /// servidor diferente do de registro dos comandos - o /ban de um servidor
+        /// ia parar no canal de log de OUTRO, entregando motivo, alvo e moderador
+        /// a gente que nao tem nada com aquilo.
+        ///
+        /// Na duvida nao publica: e o lado certo para errar quando o assunto e
+        /// vazar registro de moderacao.
+        /// </summary>
+        private static bool BelongsToGuild(DiscordChannel? channel, ulong guildId, string what)
         {
-            try
-            {
-                var config = new JSONReader();
-                await config.ReadJSON();
-                await RecordAsync(client, config, action, target, moderator, reason, extra);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[modlog] falha ao ler o config para registrar '{action}': {ex.Message}");
-            }
+            if (channel is null)
+                return false;
+
+            if (channel.GuildId == guildId)
+                return true;
+
+            Console.WriteLine($"[modlog] '{what}' NAO registrado: o canal de log configurado esta no servidor " +
+                              $"{channel.GuildId?.ToString() ?? "(nenhum)"}, e a acao aconteceu no {guildId}. " +
+                              "Configure um moderationLogChannelId do proprio servidor.");
+            return false;
         }
 
         public static async Task RecordAsync(
             DiscordClient client,
-            JSONReader config,
+            ulong guildId,
+            string action,
+            DiscordUser? target,
+            DiscordUser moderator,
+            string? reason,
+            string? extra = null,
+            string noTargetLabel = "*toda a conversa do canal*")
+        {
+            try
+            {
+                await WriteAsync(client, guildId, action, target, moderator, reason, extra, noTargetLabel);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[modlog] falha ao registrar '{action}': {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Aviso do proprio bot no canal de log - nao e o registro de uma
+        /// punicao, e por isso nao passa pelo RecordAsync: la os campos sao
+        /// "Usuario" e "Moderador", e um alerta como o do disjuntor do vigia nao
+        /// tem nem um nem outro. Forcar isso no molde de punicao produzia
+        /// "Usuario: *toda a conversa do canal*", que nao quer dizer nada aqui.
+        ///
+        /// Vermelho pela mesma regra do resto do bot: e uma condicao que exige
+        /// alguem olhar.
+        ///
+        /// Nunca lanca, como o RecordAsync.
+        /// </summary>
+        public static async Task AlertAsync(DiscordClient client, ulong guildId, string title, string description)
+        {
+            try
+            {
+                var configured = GuildSettingsStore.For(guildId)?.moderationLogChannelId;
+                if (configured is not > 0)
+                    return;
+
+                var channel = await client.GetChannelAsync(configured.Value);
+                if (!BelongsToGuild(channel, guildId, title))
+                    return;
+
+                var embed = new DiscordEmbedBuilder()
+                    .WithTitle($"⚠️ {Embeds.Trim(title, 200)}")
+                    .WithDescription(Embeds.Trim(description, 3500))
+                    .WithColor(DiscordColor.IndianRed)
+                    .WithTimestamp(DateTimeOffset.UtcNow);
+
+                await channel.SendMessageAsync(new DiscordMessageBuilder().AddEmbed(embed));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[modlog] falha ao avisar '{title}': {ex.Message}");
+            }
+        }
+
+        private static async Task WriteAsync(
+            DiscordClient client,
+            ulong guildId,
             string action,
             // Nullable: ha acoes que nao tem alvo, como o /purge sem filtro de
             // usuario. Antes o chamador passava o proprio moderador nesse caso,
@@ -59,15 +122,22 @@ namespace CommunityBot.Services
             DiscordUser? target,
             DiscordUser moderator,
             string? reason,
-            string? extra = null)
+            string? extra = null,
+            string noTargetLabel = "*toda a conversa do canal*")
         {
-            if (!config.moderationLogChannelId.HasValue || config.moderationLogChannelId.Value == 0)
+            // O canal e o DAQUELE servidor. Antes era um id unico do processo, e
+            // como o GetChannelAsync resolve id em qualquer servidor onde o bot
+            // esteja, o /ban de um servidor ia parar no log de outro. A guarda
+            // BelongsToGuild abaixo continua, agora como defesa em profundidade:
+            // o dono ainda pode digitar um id de fora no /config.
+            var target2 = GuildSettingsStore.For(guildId)?.moderationLogChannelId;
+            if (target2 is not > 0)
                 return;
 
             try
             {
-                var channel = await client.GetChannelAsync(config.moderationLogChannelId.Value);
-                if (channel is null)
+                var channel = await client.GetChannelAsync(target2.Value);
+                if (!BelongsToGuild(channel, guildId, action))
                     return;
 
                 var embed = new DiscordEmbedBuilder()
@@ -75,16 +145,16 @@ namespace CommunityBot.Services
                     .WithColor(DiscordColor.Orange)
                     .WithTimestamp(DateTimeOffset.UtcNow)
                     .AddField(new DiscordEmbedField("Usuário",
-                        target is null ? "*toda a conversa do canal*" : $"{target.Mention}\n`{target.Id}`", true))
+                        target is null ? noTargetLabel : $"{target.Mention}\n`{target.Id}`", true))
                     .AddField(new DiscordEmbedField("Moderador", $"{moderator.Mention}\n`{moderator.Id}`", true))
                     .AddField(new DiscordEmbedField("Motivo",
-                        string.IsNullOrWhiteSpace(reason) ? "*não informado*" : Embeds.Trim(reason, 1000), false));
+                        string.IsNullOrWhiteSpace(reason) ? "*não informado*" : Embeds.SafeTrim(reason, 1000), false));
 
                 if (target is not null)
                     embed.WithThumbnail(target.AvatarUrl);
 
                 if (!string.IsNullOrWhiteSpace(extra))
-                    embed.AddField(new DiscordEmbedField("Detalhes", Embeds.Trim(extra, 1000), false));
+                    embed.AddField(new DiscordEmbedField("Detalhes", Embeds.SafeTrim(extra, 1000), false));
 
                 await channel.SendMessageAsync(new DiscordMessageBuilder().AddEmbed(embed));
             }

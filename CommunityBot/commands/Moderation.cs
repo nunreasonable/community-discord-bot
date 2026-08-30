@@ -8,6 +8,7 @@ using DisCatSharp.ApplicationCommands.Attributes;
 using DisCatSharp.ApplicationCommands.Context;
 using DisCatSharp.Entities;
 using DisCatSharp.Enums;
+using DisCatSharp.Enums.Core;
 
 namespace CommunityBot.commands
 {
@@ -78,7 +79,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Banido", $"{user.Mention} foi banido.")));
 
-            await ModerationLog.RecordAsync(ctx.Client, "Banimento", user, ctx.User, reason,
+            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Banimento", user, ctx.User, reason,
                 deleteDays > 0 ? $"Mensagens dos últimos {deleteDays} dia(s) apagadas." : null);
         }
 
@@ -122,7 +123,81 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Expulso", $"{user.Mention} foi expulso.")));
 
-            await ModerationLog.RecordAsync(ctx.Client, "Expulsão", user, ctx.User, reason);
+            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Expulsão", user, ctx.User, reason);
+        }
+
+        // Cooldown de 3 segundos por usuário — é o número da documentação que
+        // este comando segue. É o único comando de moderação com cooldown aqui:
+        // os vizinhos não têm, e sem esta nota o (1, 3) pareceria arbitrário.
+        [SlashCommand("softban", "Bane e desbane na hora, apagando as mensagens do usuário", (long)Permissions.BanMembers)]
+        [ApplicationCommandRequireUserPermissions(Permissions.BanMembers)]
+        [ApplicationCommandRequireBotPermissions(Permissions.BanMembers)]
+        [SlashCommandCooldown(1, 3, CooldownBucketType.User)]
+        public async Task SoftbanCommand(
+            InteractionContext ctx,
+            [Option("usuario", "Quem levará o softban")] DiscordUser user,
+            [Option("motivo", "Motivo do softban")] string? reason = null)
+        {
+            await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder().AsEphemeral());
+
+            // Exige o membro presente, como o /kick e ao contrário do /ban.
+            // Softban é uma expulsão com limpeza; em quem já saiu não há nada
+            // para expulsar, e o unban logo em seguida devolve o servidor ao
+            // estado exato de antes. Quem quiser só apagar o histórico de alguém
+            // que já foi embora tem o /ban com apagar_dias, que é um banimento
+            // assumido e não uma expulsão que não expulsou ninguém.
+            var member = await Hierarchy.TryGetMemberAsync(ctx, user.Id);
+            if (member is null)
+            {
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                    Embeds.Error("Fora do servidor", $"{user.Mention} não está neste servidor.")));
+                return;
+            }
+
+            var blocked = Hierarchy.Check(ctx.Guild!, ctx.Member!, member, ctx.Guild!.CurrentMember);
+            if (blocked is not null)
+            {
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(blocked));
+                return;
+            }
+
+            var result = await Softban.ApplyAsync(ctx.Guild!, user.Id, Reason(ctx, reason));
+
+            if (result.Outcome == Softban.SoftbanOutcome.BanFailed)
+            {
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                    Embeds.Error("Falha ao aplicar o softban", Embeds.Trim(result.Error, 500))));
+                return;
+            }
+
+            if (result.Outcome == Softban.SoftbanOutcome.UnbanFailed)
+            {
+                // O banimento ficou de pé. Dizer só "falhou" aqui seria mentir
+                // sobre o estado do servidor: alguém precisa ir desfazer à mão.
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                    Embeds.Error("Softban pela metade",
+                        $"{user.Mention} foi banido e as mensagens foram apagadas, mas o desbanimento **falhou** — " +
+                        "ele continua banido. Desfaça o banimento à mão.\n\n" +
+                        // Sem crase em volta: a mensagem da API vem de fora e uma
+                        // crase dentro dela quebraria o bloco de codigo, engolindo
+                        // justamente o texto que explica o que deu errado.
+                        $"Detalhe: {Embeds.Trim(result.Error, 400)}")));
+
+                // Registrado mesmo assim, e de propósito: um estado errado é
+                // justamente o que precisa ficar anotado em algum lugar.
+                await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Softban", user, ctx.User, reason,
+                    "⚠️ O desbanimento falhou — o usuário continua BANIDO e precisa ser desbanido à mão.");
+                return;
+            }
+
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                Embeds.Ok("Softban aplicado",
+                    $"{user.Mention} foi banido e desbanido na hora. As mensagens dos últimos 7 dias " +
+                    "foram apagadas e ele pode voltar por convite.")));
+
+            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Softban", user, ctx.User, reason,
+                "Mensagens dos últimos 7 dias apagadas. O usuário pode voltar por convite.");
         }
 
         [SlashCommand("timeout", "Silencia um usuário por um tempo", (long)Permissions.ModerateMembers)]
@@ -174,7 +249,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Silenciado", $"{user.Mention} ficou silenciado por {describe}.")));
 
-            await ModerationLog.RecordAsync(ctx.Client, "Silenciamento", user, ctx.User, reason,
+            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Silenciamento", user, ctx.User, reason,
                 $"Duração: {describe}");
         }
 
@@ -223,7 +298,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Liberado", $"{user.Mention} não está mais silenciado.")));
 
-            await ModerationLog.RecordAsync(ctx.Client, "Silenciamento removido", user, ctx.User, reason);
+            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Silenciamento removido", user, ctx.User, reason);
         }
 
         // ReadMessageHistory alem de ManageMessages: o GetMessagesAsync abaixo
@@ -302,7 +377,7 @@ namespace CommunityBot.commands
                 // Sem filtro de usuario nao existe "alvo": passar ctx.User aqui
                 // fazia o embed dizer "Usuario: @mod / Moderador: @mod", como se
                 // o moderador tivesse feito uma limpeza contra si mesmo.
-                await ModerationLog.RecordAsync(ctx.Client, "Limpeza de mensagens",
+                await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Limpeza de mensagens",
                     user, ctx.User, null,
                     $"{target.Count} mensagem(ns) em {ctx.Channel.Mention}");
             }
@@ -346,15 +421,23 @@ namespace CommunityBot.commands
                 : Embeds.Ok("Modo lento ligado", $"Uma mensagem a cada {seconds} segundo(s) em {ctx.Channel.Mention}.")));
         }
 
-        [SlashCommand("lock", "Impede o @everyone de enviar mensagens no canal", (long)Permissions.ManageChannels)]
-        [ApplicationCommandRequireUserPermissions(Permissions.ManageChannels)]
+        // Exige ManageRoles de quem usa, e nao so ManageChannels: o que o comando
+        // faz e escrever um permission overwrite, e o Discord pede Manage Roles
+        // (Gerenciar Permissoes) para isso. Pedindo so ManageChannels, o bot
+        // emprestava a PROPRIA permissao de cargos para alguem executar uma acao
+        // que aquela pessoa nao pode fazer a mao - e o defaultMemberPermissions
+        // ainda anunciava a permissao errada a quem configura a integracao.
+        [SlashCommand("lock", "Impede o @everyone de enviar mensagens no canal",
+            (long)(Permissions.ManageChannels | Permissions.ManageRoles))]
+        [ApplicationCommandRequireUserPermissions(Permissions.ManageChannels | Permissions.ManageRoles)]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageRoles)]
         public Task LockCommand(InteractionContext ctx,
             [Option("motivo", "Motivo do fechamento")] string? reason = null) =>
             SetLockAsync(ctx, locked: true, reason);
 
-        [SlashCommand("unlock", "Devolve ao @everyone o envio de mensagens no canal", (long)Permissions.ManageChannels)]
-        [ApplicationCommandRequireUserPermissions(Permissions.ManageChannels)]
+        [SlashCommand("unlock", "Devolve ao @everyone o envio de mensagens no canal",
+            (long)(Permissions.ManageChannels | Permissions.ManageRoles))]
+        [ApplicationCommandRequireUserPermissions(Permissions.ManageChannels | Permissions.ManageRoles)]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageRoles)]
         public Task UnlockCommand(InteractionContext ctx,
             [Option("motivo", "Motivo da reabertura")] string? reason = null) =>
@@ -439,16 +522,19 @@ namespace CommunityBot.commands
             // @mod", como se o moderador tivesse agido contra si mesmo - o mesmo
             // bug que o comentario do /purge diz ter corrigido. O canal vai no
             // campo de detalhes.
-            await ModerationLog.RecordAsync(ctx.Client,
+            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id,
                 locked ? "Canal fechado" : "Canal reaberto",
-                null, ctx.User, reason, ctx.Channel.Mention);
+                null, ctx.User, reason, ctx.Channel.Mention,
+                // Idem /say: trancar um canal nao tem usuario-alvo, e o rotulo
+                // padrao e do /purge.
+                noTargetLabel: "—");
         }
 
         /// <summary>
-        /// Texto que vai para o Audit Log do Discord. Carregar quem executou faz
-        /// o registro nativo continuar util mesmo se o canal de log for apagado.
+        /// Texto que vai para o Audit Log do Discord. A limpeza e o corte moram
+        /// em <see cref="AuditReason"/>, que os tickets tambem usam.
         /// </summary>
         private static string Reason(InteractionContext ctx, string? reason) =>
-            Embeds.Trim($"{ctx.User.UsernameWithDiscriminator}: {reason ?? "sem motivo informado"}", 400);
+            AuditReason.For(ctx.User.UsernameWithDiscriminator, reason);
     }
 }

@@ -25,5 +25,16 @@ RestartSec=10
 KillSignal=SIGINT
 TimeoutStopSec=30
 
+# Endurecimento minimo. E uma unit --user, entao o raio de acao ja e a conta do
+# usuario - mas e nessa conta que mora o token, e o processo nao tem motivo
+# nenhum para ganhar privilegio novo ou enxergar /tmp de mais ninguem.
+#
+# ProtectHome e ProtectSystem=strict ficam de FORA de proposito: o binario, o
+# config e o data/ vivem todos dentro de $HOME, e ligar qualquer um dos dois
+# impede o bot de subir.
+NoNewPrivileges=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+
 [Install]
 WantedBy=default.target

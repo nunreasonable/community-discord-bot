@@ -43,12 +43,24 @@ namespace CommunityBot.Services
             if (target.Id == bot.Id)
                 return Embeds.Error("Alvo inválido", "Não posso aplicar isso em mim mesmo.");
 
-            if (target.Id == guild.OwnerId)
+            // guild.OwnerId e `ulong?`, e a comparacao com um `ulong` e LIFTED:
+            // com OwnerId nulo, `target.Id == guild.OwnerId` da FALSE e a
+            // protecao do dono sumia em silencio, sem nenhum aviso do compilador.
+            // Era o unico ponto desta classe que falhava ABERTO - e num arquivo
+            // cujo docstring promete o contrario. Nao saber quem e o dono e o
+            // mesmo caso de nao conseguir ler o proprio cargo: recusa.
+            if (guild.OwnerId is not { } ownerId)
+            {
+                return Embeds.Error("Hierarquia indisponível",
+                    "Não consegui ler quem é o dono deste servidor agora, então não dá para conferir a hierarquia. Tente de novo em alguns segundos.");
+            }
+
+            if (target.Id == ownerId)
                 return Embeds.Error("Alvo inválido", "Não é possível moderar o dono do servidor.");
 
             // O dono passa por cima da comparacao de cargo: o cargo mais alto dele
             // nao precisa ser o mais alto do servidor.
-            if (actor.Id != guild.OwnerId && TopRole(target) >= TopRole(actor))
+            if (actor.Id != ownerId && TopRole(target) >= TopRole(actor))
             {
                 return Embeds.Error("Hierarquia",
                     $"{target.Mention} tem um cargo igual ou mais alto que o seu, então você não pode moderá-lo.");
@@ -78,16 +90,50 @@ namespace CommunityBot.Services
         /// tinham copias byte a byte deste metodo, entao a proxima correcao
         /// entraria em so uma das duas.
         /// </summary>
-        public static async Task<DiscordMember?> TryGetMemberAsync(InteractionContext ctx, ulong userId)
+        public static Task<DiscordMember?> TryGetMemberAsync(InteractionContext ctx, ulong userId) =>
+            TryGetMemberAsync(ctx.Guild!, userId);
+
+        /// <summary>
+        /// A mesma busca, para quem nao veio de uma interacao - o vigia de canal
+        /// reage a uma mensagem e nao tem InteractionContext nenhum nas maos.
+        /// A sobrecarga acima delega para ca justamente para o catch estreito
+        /// existir uma vez so.
+        /// </summary>
+        public static async Task<DiscordMember?> TryGetMemberAsync(DiscordGuild guild, ulong userId)
         {
             try
             {
-                return await ctx.Guild!.GetMemberAsync(userId);
+                return await guild.GetMemberAsync(userId);
             }
             catch (NotFoundException)
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Diz se <paramref name="actor"/> esta ESTRITAMENTE acima de
+        /// <paramref name="other"/> na hierarquia.
+        ///
+        /// Separado do Check porque nem toda decisao e "posso punir esta pessoa?".
+        /// O /delwarn precisa de "posso mexer no registro que AQUELE moderador
+        /// escreveu?", que compara dois moderadores e nao tem alvo de punicao.
+        ///
+        /// Falha fechado: sem saber quem e o dono, ninguem ganha o atalho de dono
+        /// e a decisao recai na comparacao de cargo.
+        /// </summary>
+        public static bool Outranks(DiscordGuild guild, DiscordMember actor, DiscordMember other)
+        {
+            if (guild.OwnerId is { } ownerId)
+            {
+                if (actor.Id == ownerId)
+                    return true;
+
+                if (other.Id == ownerId)
+                    return false;
+            }
+
+            return TopRole(actor) > TopRole(other);
         }
 
         /// <summary>

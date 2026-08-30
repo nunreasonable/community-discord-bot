@@ -16,15 +16,33 @@ Os comandos são todos novos — os do ccore são do regimento e não vieram jun
 1. Crie uma aplicação em <https://discord.com/developers/applications>.
 2. Em **Bot**, ligue o intent privilegiado **Server Members**. É o que permite
    ler cargos para a checagem de hierarquia.
-   **Message Content não é necessário** — tudo aqui é slash command.
+
+   Como os comandos são globais, o bot cresce sozinho conforme for convidado — e
+   **Server Members é privilegiado**. Passando de **100 servidores**, a aplicação
+   precisa ser verificada pelo Discord e o intent aprovado, ou ela deixa de
+   conseguir conectar com ele. Mais longe ainda, perto de 2500, o Discord exige
+   sharding, e este bot usa um `DiscordClient` só. Nenhum dos dois é problema
+   hoje; os dois são o teto do arranjo.
+   **Message Content não é necessário.** Os comandos são todos slash command, e o
+   vigia de canal (abaixo) usa o **Guild Messages**, que não é privilegiado e não
+   precisa de nada no portal: ele olha quem escreveu e onde, nunca o texto.
 3. Copie o config e cole o token:
    ```bash
    cp CommunityBot/config/config.example.jsonc CommunityBot/config/config.jsonc
    ```
    `config.jsonc` está no `.gitignore` justamente por causa do token.
-4. Convide o bot com as permissões que os comandos exigem: Ban Members,
-   Kick Members, Moderate Members, Manage Messages, Manage Channels, Manage Roles,
-   Read Message History e Add Reactions.
+4. Convide o bot com o escopo **`bot applications.commands`** — sem o segundo,
+   os comandos globais não aparecem no servidor — e com as permissões que os
+   comandos exigem: **View Channel**,
+   **Send Messages**, Ban Members, Kick Members, Moderate Members, Manage Messages,
+   Manage Channels, Manage Roles, Read Message History, Attach Files e Add
+   Reactions.
+
+   Três delas costumam ser esquecidas, e cada uma quebra alguma coisa em
+   silêncio: sem **View Channel** o gateway não entrega as mensagens do canal
+   vigiado e o auto-softban nunca dispara; sem **Send Messages** o `/say` e o
+   `/ticket-painel` são recusados; e **Manage Channels + Manage Roles** são o que
+   permite criar o canal de um ticket e escrever quem pode vê-lo.
 5. `dotnet run --project CommunityBot`
 
 O `config/` é copiado para junto do executável no build, e o bot resolve
@@ -49,11 +67,65 @@ que roda sem otimização e com as asserções ligadas.
 
 ## Config
 
+O arquivo tem **duas** chaves. Todo o resto — canal de log, armadilha do softban
+automático, tickets — é **por servidor** e se configura pelo comando `/config`,
+por quem tem **Gerenciar Servidor**, sem acesso a esta máquina.
+
 | Chave | O que faz |
 |---|---|
 | `token` | Token da aplicação. |
-| `guildIds` | Servidores onde registrar os comandos na hora. **Lista vazia registra globalmente**, o que leva até uma hora para propagar. |
-| `moderationLogChannelId` | Canal que recebe um embed por ação de moderação. Sem ele o bot funciona, mas nada fica registrado além do Audit Log nativo. |
+| `guildIds` | Atalho de desenvolvimento. **Deixe vazio**: os comandos são registrados globalmente e valem em todo servidor, inclusive nos que o bot entrar depois. Ver abaixo. |
+
+### Onde os comandos são registrados
+
+Vazio o `guildIds`, os comandos vão para o escopo **global**. O Discord os
+anexa sozinho a qualquer servidor onde a aplicação for instalada com o escopo
+`applications.commands` — **inclusive nos que o bot entrar depois**. Entrar num
+servidor novo não pede passo nenhum: o dono já encontra o `/config` lá dentro.
+A espera de até uma hora vale para *alterar* a definição de um comando, não
+para um servidor novo enxergar os que já existem.
+
+Preencher a lista inverte o arranjo: os comandos passam a existir **só** nesses
+servidores. Aparecem na hora, o que torna a iteração viável durante o
+desenvolvimento, mas o bot fica mudo em todo o resto — servidor novo incluído.
+
+As duas metades não convivem. Comando de guild e comando global são registros
+separados do lado do Discord, e o cliente mostra **os dois** — e a cópia velha
+não é uma segunda cópia que funciona: o despacho casa a interação pelo id do
+comando, e o id daquela foi criado por um processo anterior. Quem escolhesse a
+errada no menu receberia "a aplicação não respondeu". Por isso a subida em modo
+global **recolhe** as cópias por servidor que tiverem sobrado, nomeando no log o
+que apagou. Cada servidor é varrido uma vez por processo, então reconexão não
+repete a consulta.
+
+No caminho contrário — subir com a lista preenchida tendo comandos globais de pé
+— o bot **avisa no log e não apaga nada**: apagar os globais numa sessão de
+desenvolvimento tiraria os comandos de todos os outros servidores. A saída
+limpa para desenvolver é uma aplicação e um token separados.
+
+Toda entrada em servidor novo rende uma linha no log, com nome, id e tamanho.
+
+### Configuração por servidor
+
+`/config ver` `/config log-moderacao` `/config auto-softban`
+`/config tickets-categoria` `/config tickets-cargo` `/config tickets-log`
+
+Cada subcomando mexe numa chave e tem uma opção opcional, onde **omitir a opção
+limpa o valor**. Um comando só com várias opções opcionais seria mais curto e
+ambíguo: não daria para distinguir "não mexa nisso" de "limpe isso".
+
+O `/config ver` mostra o estado atual **e o que falta** para cada recurso
+funcionar — categoria de ticket sem cargo da equipe não liga nada, armadilha
+armada sem canal de log deixa o aviso de disjuntor sem destino, e assim por
+diante. Ao definir um canal, o bot confere na hora as permissões que vai precisar
+nele (escrever, anexar o transcript, enxergar a armadilha) e recusa dizendo o que
+falta, em vez de deixar o problema aparecer dias depois como um silêncio.
+
+Isto era um arquivo na máquina do bot até esta versão. Além do incômodo, as
+chaves eram **globais do processo**: com o bot em mais de um servidor, o log de
+moderação de um podia cair no canal de outro. Se você já tinha as chaves antigas
+preenchidas, o bot as move sozinho para o formato novo na primeira subida,
+descobrindo a que servidor cada id pertence.
 
 ## Comandos
 
@@ -62,7 +134,20 @@ aparece para quem tem Ban Members, e assim por diante. Não há cargo para
 configurar à mão.
 
 ### Moderação
-`/ban` `/kick` `/timeout` `/untimeout` `/purge` `/slowmode` `/lock` `/unlock`
+`/ban` `/softban` `/kick` `/timeout` `/untimeout` `/purge` `/slowmode` `/lock`
+`/unlock`
+
+O `/lock` e o `/unlock` exigem **Manage Roles além de Manage Channels**: o que
+eles fazem é escrever um *permission overwrite*, e é Manage Roles que o Discord
+pede para isso. Exigindo só Manage Channels, o bot emprestava a própria permissão
+de cargos para alguém executar uma ação que aquela pessoa não pode fazer à mão.
+
+O `/softban` bane e desbane na sequência. O ban do Discord é o único jeito de
+apagar o histórico recente de alguém em todos os canais de uma vez, e o unban
+logo depois devolve a pessoa à condição de quem só foi expulso: ela pode voltar
+por convite. Apaga os últimos 7 dias, sem opção — é o teto da API e é o ponto do
+comando. Se o ban passar e o unban falhar, o bot **diz isso**, porque o que
+sobrou de pé é um banimento de verdade que alguém precisa desfazer à mão.
 
 O `/timeout` aceita duração escrita como gente escreve — `10m`, `2h30m`, `1d` —
 com o teto de 28 dias que o Discord impõe. Toda punição passa por uma checagem de
@@ -80,24 +165,132 @@ explicando, em vez de seguir sem conferir.
 O `/purge` ignora mensagem com mais de 14 dias, porque a API recusa apagá-las em
 lote e uma só delas derrubaria a chamada inteira.
 
+### Softban automático de canal
+
+Com `/config auto-softban #canal`, **qualquer**
+mensagem escrita naquele canal daquele servidor rende um softban a quem
+escreveu. É um canal-armadilha: existe para não ser usado.
+
+Ficam de fora bots e webhooks, mensagem de sistema (entrada no servidor, pin,
+boost — o autor aparece sem ter escrito nada), quem tem Ban Members, Manage
+Server ou Administrator, e tudo o que a checagem de hierarquia já barra: o dono
+do servidor, o próprio bot e quem está acima do cargo dele. Cada recusa vira uma
+linha `[autosoftban]` no log, que o `/logs` lê — "por que fulano não foi banido?"
+é a primeira pergunta que aparece.
+
+Uma rajada de mensagens da mesma pessoa conta uma vez só: há uma janela de 30
+segundos por usuário, senão cada mensagem viraria um ban, um unban e um embed de
+log a mais para o mesmo caso.
+
+Mensagem em **thread filha** do canal vigiado também conta. Sem isso, qualquer
+um com permissão de criar thread abria uma na armadilha e conversava à vontade:
+para quem lê, está escrevendo no canal proibido; para o vigia, o id era outro.
+Um teste de tipo de canal é o que torna isso seguro — o "canal pai" de um canal
+de texto comum é a **categoria**, então casar por pai sem olhar o tipo faria o id
+de uma categoria pegar todo canal dentro dela.
+
+**Canal de fórum e de mídia funcionam** como armadilha, justamente por causa
+disso: uma publicação de fórum é uma thread filha do canal, então o vigia pega
+todas elas. O bot registra isso na subida como informação, não como erro — o
+texto anterior aqui dizia o contrário, e um fórum configurado como armadilha
+banindo todo mundo que publicasse era o pior jeito possível de descobrir que a
+documentação estava errada. Categoria é o único caso que não serve, porque
+categoria não recebe mensagem.
+
+A mensagem que disparou tudo não é apagada à parte: o ban de 7 dias já a leva
+junto.
+
+**O bot diz na subida se o vigia está de pé.** Uma linha no log com o canal em
+que ele ficou armado — ou o motivo exato de não ter ficado: servidor errado,
+canal inexistente, canal invisível para o bot (aí o gateway nem entrega as
+mensagens), tipo de canal incompatível, ou falta de Ban Members. Sem isso, os
+quatro jeitos de errar a configuração produzem o mesmo silêncio de um canal em
+que ninguém escreveu.
+
+**Disjuntor.** Passando de **5 softbans aplicados em 60 segundos** — ou seja, no
+sexto —, o vigia **daquele servidor** se desarma sozinho e não bane mais nada ali até
+o bot reiniciar. O disjuntor é por servidor: um raid num não desarma a armadilha
+dos outros. Ele
+grita no log local e, **se houver canal de log de moderação** (`/config log-moderacao`), também num embed
+lá; sem essa chave o desarme só aparece no log local, e o bot avisa disso na
+subida. Tentativa de ban que falha não conta — só punição aplicada. Os dois jeitos de isso dar muito errado — uma armadilha
+apontando para um canal movimentado e um raid de verdade — têm a mesma resposta
+certa, que é parar e chamar alguém, não banir mais rápido. Não rearma sozinho de
+propósito: rearmar é voltar a banir exatamente na situação que fez ele disparar.
+O `/softban` manual continua funcionando enquanto isso.
+
 ### Advertências
 `/warn` `/warnings` `/delwarn`
 
 Guardadas em `data/warnings.json`, com escrita atômica e semáforo estático — o
-mesmo desenho do `AuditStore` do ccore.
+mesmo desenho do `AuditStore` do ccore. O teto de 5000 registros é **por
+servidor**: com um teto global, um servidor movimentado apagava o histórico de
+moderação de outro sem que ninguém do lado prejudicado pudesse fazer nada.
+
+O `/delwarn` respeita hierarquia: você pode apagar as suas próprias advertências,
+e as de quem estiver **abaixo** de você. Apagar uma advertência não é um ato
+contra quem a levou — é um ato contra o registro de quem a aplicou, e por isso
+quem é comparado é o moderador que escreveu, não o advertido.
+
+### Tickets
+`/ticket` `/ticket-fechar` `/ticket-add` `/ticket-remove` `/ticket-painel`
+
+Cada ticket é um canal de texto privado numa categoria, com quem abriu e o cargo
+da equipe dentro e o `@everyone` fora. Abre por três caminhos: o `/ticket-painel`
+publica uma mensagem com um botão por tipo (Dúvida, Denúncia, Parceria, Outro),
+o botão abre um formulário pedindo assunto e detalhes, e o `/ticket` faz o mesmo
+direto pela linha de comando quando o painel não está à mão.
+
+**Uma pessoa tem um ticket aberto por vez.** A verificação acontece dentro da
+mesma escrita que reserva o número, e não antes dela — dois cliques rápidos no
+botão são duas tarefas em paralelo, e uma checagem feita fora do bloqueio deixaria
+as duas passarem.
+
+Dentro do canal há dois botões: **Assumir**, que marca quem está atendendo para
+dois moderadores não responderem em cima um do outro, e **Fechar**, que abre um
+formulário pedindo o motivo — esse formulário é a confirmação, porque fechar
+apaga o canal.
+
+Ao fechar, a conversa vira um `.txt` que sobe para o canal de log de tickets junto de
+um resumo, **e só então o canal é apagado**. Se o arquivamento falhar — canal de
+log errado, sem permissão de anexar, ou nenhum log configurado — o canal é
+trancado e continua de pé. Apagar mesmo assim destruiria a conversa inteira sem
+deixar nada no lugar, que é o oposto do que arquivar quer dizer.
+
+O estado dos tickets vive em `data/tickets.json`, com a mesma escrita atômica das
+advertências. Nada fica em memória, e é por isso que os botões de um painel
+publicado continuam funcionando depois de o bot reiniciar. A poda só remove
+ticket **fechado**: apagar o registro de um ticket vivo deixaria um canal órfão
+que ninguém mais consegue fechar pelo bot.
+
+Como no vigia de canal, o bot diz na subida se os tickets estão de pé — ou lista
+de uma vez tudo o que está errado na configuração, em vez de fazer descobrir um
+problema por reinicialização.
 
 ### Diversão
 `/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/say`
 
 Todos com cooldown por usuário. O `/say` exige Manage Messages e não permite
 menção a cargo nem a `@everyone`: senão seria um jeito de contornar quem pode
-mencionar todo mundo.
+mencionar todo mundo. Ele também confere se **você** pode escrever naquele canal
+— permissão de servidor não vale como passe livre num canal onde você foi
+barrado — e cada uso vai para o log de moderação, porque a mensagem sai assinada
+pelo bot e o Audit Log do Discord não cobre envio de mensagem.
+
+Texto de usuário que vai para dentro de um embed (`/poll`, `/8ball`, `/choose`)
+tem o `[` escapado. Descrição de embed renderiza link mascarado, então sem isso
+qualquer membro montava um cartão assinado pelo bot com um link cujo destino não
+aparece — o mesmo risco que faz o `/say` ser restrito.
 
 ### Utilidade
 `/ping` `/userinfo` `/serverinfo` `/poll` `/help` `/logs`
 
-O `/logs` lê o buffer em memória e é restrito a administradores — as linhas
-carregam ids de usuário, mensagens de exceção e caminhos da máquina.
+O `/logs` lê o buffer em memória e é restrito a quem administra **o bot** —
+o dono da aplicação, ou qualquer membro do time dela. As linhas carregam ids de
+usuário, mensagens de exceção e caminhos da máquina, e o buffer é do processo
+inteiro: com o bot em vários servidores, "administrador do servidor" deixou de
+ser um portão, já que qualquer pessoa cria um servidor e convida o bot para
+ser administradora nele. Ele não aparece no `/help` pelo mesmo motivo.
 
 ## Termos e Privacidade
 

@@ -148,39 +148,37 @@ namespace CommunityBot.Services
         }
 
         /// <summary>
-        /// Teto de advertencias guardadas. Sem isto o arquivo so crescia, e cada
-        /// /warn relia, reserializava e regravava o historico inteiro.
+        /// Teto de advertencias guardadas POR SERVIDOR. Sem isto o arquivo so
+        /// crescia, e cada /warn relia, reserializava e regravava o historico
+        /// inteiro.
+        ///
+        /// Por servidor, e nao global: o arquivo guarda o historico de todos os
+        /// servidores numa lista so, entao um corte global fazia um servidor
+        /// movimentado apagar o passado de MODERACAO de outro - sem aviso
+        /// nenhum para quem perdeu, e sem nada que aquele lado pudesse fazer.
         /// </summary>
         private const int MaxStoredWarnings = 5000;
 
         private static void Prune(WarningFile file)
         {
+            // Atalho barato: se o total ja cabe no teto, nenhum servidor sozinho
+            // pode estourar. Evita agrupar a lista inteira a cada escrita.
             if (file.warnings.Count <= MaxStoredWarnings)
                 return;
 
-            // Descarta as mais antigas: advertencia recente e a que ainda importa
-            // para decidir uma punicao.
+            // Descarta as mais antigas de CADA servidor: advertencia recente e a
+            // que ainda importa para decidir uma punicao.
             var keep = file.warnings
-                .OrderByDescending(w => w.createdAtUtc)
-                .Take(MaxStoredWarnings)
+                .GroupBy(w => w.guildId)
+                .SelectMany(g => g.OrderByDescending(w => w.createdAtUtc).Take(MaxStoredWarnings))
                 .OrderBy(w => w.createdAtUtc)
                 .ToList();
 
             var dropped = file.warnings.Count - keep.Count;
             file.warnings = keep;
-            Console.WriteLine($"[warnings] podadas {dropped} advertencia(s) antiga(s); teto e {MaxStoredWarnings}.");
+            if (dropped > 0)
+                Console.WriteLine($"[warnings] podadas {dropped} advertencia(s) antiga(s); teto e {MaxStoredWarnings} por servidor.");
         }
-
-        /// <summary>
-        /// Id curto e legivel para o /delwarn.
-        ///
-        /// Oito caracteres de um Guid sao ~32 bits: no teto de 5000 advertencias a
-        /// chance de colisao ja passa de 0,3% (paradoxo do aniversario), e uma
-        /// colisao faz o /delwarn (que usa FirstOrDefault) apagar a advertencia
-        /// errada em silencio. Use NewUniqueId dentro da mutacao sempre que houver
-        /// o arquivo em maos.
-        /// </summary>
-        public static string NewId() => Guid.NewGuid().ToString("N")[..8];
 
         /// <summary>
         /// Id curto garantidamente unico dentro do arquivo. Chamado de dentro da
@@ -194,7 +192,11 @@ namespace CommunityBot.Services
             {
                 id = Guid.NewGuid().ToString("N")[..8];
             }
-            while (file.warnings.Any(w => w.id == id));
+            // OrdinalIgnoreCase para casar com o /delwarn, que procura assim. Hoje
+            // os dois dao no mesmo porque Guid.ToString("N") e sempre minusculo,
+            // mas duas regras de comparacao diferentes para a mesma chave e o tipo
+            // de detalhe que deixa de dar no mesmo quando alguem muda o gerador.
+            while (file.warnings.Any(w => string.Equals(w.id, id, StringComparison.OrdinalIgnoreCase)));
 
             return id;
         }

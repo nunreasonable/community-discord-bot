@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using CommunityBot.config;
 using CommunityBot.Services;
 using DisCatSharp;
 using DisCatSharp.ApplicationCommands;
+using DisCatSharp.ApplicationCommands.Attributes;
 using DisCatSharp.Entities;
 using DisCatSharp.Enums;
 using DisCatSharp.EventArgs;
@@ -60,10 +62,15 @@ namespace CommunityBot
             {
                 // So o necessario. GuildMembers e privilegiado e precisa ser ligado
                 // no portal - e o que permite ler cargos para a checagem de
-                // hierarquia. MessageContent NAO entra: tudo aqui e slash command,
-                // e pedir um intent privilegiado a toa e superficie de risco de
-                // graca.
-                Intents = DiscordIntents.Guilds | DiscordIntents.GuildMembers,
+                // hierarquia. GuildMessages NAO e privilegiado e nao pede nada no
+                // portal; ele existe aqui so para o vigia de canal do AutoSoftban
+                // receber o evento de mensagem.
+                //
+                // MessageContent continua de fora. O vigia olha QUEM escreveu e
+                // ONDE, nunca o texto - sem esse intent o Content chega vazio, e
+                // aqui isso nao faz falta nenhuma. Pedir um intent privilegiado a
+                // toa e superficie de risco de graca.
+                Intents = DiscordIntents.Guilds | DiscordIntents.GuildMembers | DiscordIntents.GuildMessages,
                 Token = config.token,
                 TokenType = TokenType.Bot,
                 AutoReconnect = true,
@@ -82,6 +89,44 @@ namespace CommunityBot
             // Registrando antes, da para barrar o clique de quem nao e dono da
             // mensagem e responder a ele.
             Client.ComponentInteractionCreated += HandleComponentInteraction;
+
+            // Vigia de canal. Inerte enquanto autoSoftbanGuildId e
+            // autoSoftbanChannelId nao estiverem no config.
+            Client.MessageCreated += AutoSoftban.OnMessageCreated;
+
+            // Diz na subida se o vigia esta ligado e, se nao estiver funcionando,
+            // por que. Sem isto, canal errado, canal invisivel e canal de forum
+            // produzem o mesmo silencio que "ninguem escreveu la".
+            Client.GuildDownloadCompleted += AutoSoftban.ReportStatusAsync;
+
+            // Botoes e modais dos tickets. Handler PROPRIO, e nao um ramo dentro
+            // do HandleComponentInteraction: aquele volta cedo em ModalSubmit, e
+            // o fluxo de ticket depende justamente de modal. Os dois convivem
+            // porque nenhum marca Handled num id que nao e seu.
+            Client.ComponentInteractionCreated += TicketComponents.OnComponent;
+            Client.GuildDownloadCompleted += TicketService.ReportStatusAsync;
+
+            // Traz as chaves antigas do config.jsonc para a configuracao por
+            // servidor, uma vez so. Roda aqui, e nao antes de conectar, porque
+            // precisa do cache de servidores para descobrir a que servidor cada
+            // id solto pertence.
+            Client.GuildDownloadCompleted += LegacyConfigMigration.RunAsync;
+
+            // Recolhe os comandos de guild que sobraram da epoca em que o bot
+            // vivia num servidor so. Sem isto, o servidor que estava em guildIds
+            // mostra cada comando DUAS vezes depois da troca para global - e a
+            // copia velha nem responde, porque o id dela e de outro processo.
+            //
+            // Inscrito por ULTIMO entre os handlers deste evento, de proposito: o
+            // despachante os chama em ordem, e o relatorio do vigia e a
+            // reconciliacao de tickets nao devem esperar por consulta REST. (O
+            // proprio sweeper ja sai do caminho do gateway, mas a ordem e de
+            // graca e nao depende disso continuar verdade.)
+            Client.GuildDownloadCompleted += GuildCommandSweeper.SweepAsync;
+
+            // Entrada em servidor novo. Vira uma linha no log e varre a sobra de
+            // uma passagem anterior pelo mesmo servidor.
+            Client.GuildCreated += GuildCommandSweeper.OnGuildCreatedAsync;
 
             Client.UseInteractivity(new InteractivityConfiguration
             {
@@ -117,11 +162,68 @@ namespace CommunityBot
                 var who = e.Context?.User?.Id;
                 Console.WriteLine($"[erro] /{name} de {who} falhou: {e.Exception}");
 
-                // Uma checagem que recusou o comando nao e falha: e o
-                // comportamento pretendido, e o proprio DisCatSharp ja
-                // respondeu. Avisar de novo daria erro de "ja respondido".
-                if (e.Exception is DisCatSharp.ApplicationCommands.Exceptions.SlashExecutionChecksFailedException)
+                /*
+                 * Uma checagem que recusou o comando nao e falha - e o
+                 * comportamento pretendido. So que apenas UMA delas responde ao
+                 * usuario sozinha: o SlashCommandCooldown, que manda um
+                 * "Ratelimit hit" efemero. As checagens de permissao
+                 * (RequireBotPermissions, RequireUserPermissions, RequireGuild)
+                 * lancam sem responder nada.
+                 *
+                 * Com o `return` valendo para todas, tirar Ban Members do cargo
+                 * do bot fazia o /ban e o /softban morrerem em "A aplicacao nao
+                 * respondeu" - a checagem falha ANTES do corpo do comando, entao
+                 * nem o defer chegou a acontecer, e ninguem dizia ao moderador o
+                 * que estava errado.
+                 */
+                if (e.Exception is DisCatSharp.ApplicationCommands.Exceptions.SlashExecutionChecksFailedException checks)
+                {
+                    /*
+                     * O DisCatSharp roda TODAS as checagens e junta todas as
+                     * falhas - nao para na primeira. E o cooldown responde a
+                     * interacao por conta propria antes de reprovar.
+                     *
+                     * Entao quando o cooldown falha JUNTO com outra checagem, a
+                     * interacao ja foi respondida, e um CreateResponseAsync aqui
+                     * levava 400/40060. O usuario via so o "Ratelimit hit" da
+                     * biblioteca e nunca ficava sabendo que faltava permissao ao
+                     * bot - e o log ganhava um ERRO falso justamente no filtro que
+                     * se usa durante um incidente.
+                     */
+                    var explain = checks.FailedChecks?
+                        .Where(c => c is not SlashCommandCooldownAttribute)
+                        .ToList() ?? new List<ApplicationCommandCheckBaseAttribute>();
+
+                    if (explain.Count == 0)
+                        return;
+
+                    // Sobrou alguma alem do cooldown, e havia cooldown na lista:
+                    // logo o cooldown ja respondeu e so cabe follow-up.
+                    var alreadyAnswered = explain.Count != checks.FailedChecks!.Count;
+
+                    try
+                    {
+                        var embed = Embeds.Error("Comando recusado", DescribeFailedChecks(explain));
+
+                        if (alreadyAnswered)
+                        {
+                            await e.Context!.FollowUpAsync(
+                                new DiscordFollowupMessageBuilder().AddEmbed(embed).AsEphemeral());
+                        }
+                        else
+                        {
+                            // Nada foi deferido: e preciso CRIAR a resposta.
+                            await e.Context!.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
+                                new DiscordInteractionResponseBuilder().AddEmbed(embed).AsEphemeral());
+                        }
+                    }
+                    catch (Exception inner)
+                    {
+                        Console.WriteLine($"[erro] nao consegui explicar a recusa de /{name}: {inner.Message}");
+                    }
+
                     return;
+                }
 
                 try
                 {
@@ -138,17 +240,42 @@ namespace CommunityBot
             };
 
             var guildIds = config.guildIds ?? Array.Empty<ulong>();
+
+            // Latcheado AQUI, uma vez, e nao relido dentro do sweeper. O
+            // JSONReader recarrega o config quando o arquivo muda, entao ler
+            // guildIds de novo mais tarde poderia ver uma edicao feita com o bot
+            // no ar - e o sweeper apagaria comandos de guild que ESTE processo
+            // esta servindo. O que vale para ele e o modo em que a subida
+            // registrou, nao o que o arquivo diz agora.
+            GuildCommandSweeper.UseGlobalMode(guildIds.Length == 0);
+
             if (guildIds.Length == 0)
             {
-                // Global propaga em ate uma hora; de guild aparece na hora. Por
-                // isso guildIds existe no config - durante o desenvolvimento
-                // esperar uma hora por comando nao e viavel.
-                Console.WriteLine("Registrando comandos globalmente (pode levar ate uma hora para aparecer).");
+                // MODO NORMAL. Global vale em todo servidor onde a aplicacao for
+                // instalada com o escopo applications.commands - inclusive nos
+                // que ainda nao existem -, entao entrar num servidor novo nao
+                // pede passo nenhum.
+                //
+                // A espera de ate uma hora que este aviso prometia e de ALTERAR a
+                // definicao de um comando, nao de um servidor novo enxergar os
+                // que ja existem. Escrito como estava, dava a entender que o bot
+                // ficaria mudo por uma hora em cada servidor novo.
+                Console.WriteLine("Registrando comandos globalmente: valem em todo servidor, " +
+                                  "inclusive nos que o bot entrar depois. " +
+                                  "Mudanca na definicao de um comando pode levar ate uma hora para propagar.");
                 RegisterAll(slashCommands, null);
             }
             else
             {
-                foreach (var gid in guildIds)
+                // MODO DE DESENVOLVIMENTO. Comando de guild aparece na hora, o
+                // que torna a iteracao viavel - mas o bot passa a NAO ter comando
+                // em nenhum outro servidor, os novos inclusive. O
+                // GuildCommandSweeper avisa no log se ainda houver comandos
+                // globais de pe, porque ai os dois conjuntos se somam.
+                //
+                // Distinct: um id repetido no config registrava o mesmo servidor
+                // duas vezes, mandando definicoes duplicadas no mesmo payload.
+                foreach (var gid in guildIds.Distinct())
                 {
                     Console.WriteLine($"Registrando comandos no servidor {gid}.");
                     RegisterAll(slashCommands, gid);
@@ -157,17 +284,53 @@ namespace CommunityBot
 
             StartThreadPoolCanary();
 
+            // Carrega a configuracao dos servidores ANTES de conectar. Sem isto o
+            // primeiro lote de mensagens depois do connect chegaria antes de o
+            // snapshot existir, e uma mensagem na armadilha nesse instante
+            // passaria batido.
+            await GuildSettingsStore.Instance.LoadAsync();
+
             // Shutdown gracioso. A unit do systemd usa KillSignal=SIGINT, e antes
             // o Task.Delay(-1) so era interrompido pela morte do processo: sem
             // DisconnectAsync (o gateway ficava pendurado do lado do Discord) e
             // sem flush do ConsoleTee (a ultima linha sem \n sumia do buffer).
             using var shutdown = new CancellationTokenSource();
-            using var sigint = System.Runtime.InteropServices.PosixSignalRegistration.Create(
-                System.Runtime.InteropServices.PosixSignal.SIGINT, ctx => { ctx.Cancel = true; shutdown.Cancel(); });
-            using var sigterm = System.Runtime.InteropServices.PosixSignalRegistration.Create(
-                System.Runtime.InteropServices.PosixSignal.SIGTERM, ctx => { ctx.Cancel = true; shutdown.Cancel(); });
+            // O PRIMEIRO sinal e capturado para o encerramento limpo; o segundo
+            // passa direto. Cancelando os dois, um DisconnectAsync travado deixava
+            // o operador sem saida a nao ser SIGKILL - no systemd o
+            // TimeoutStopSec=30 resolve, mas num `dotnet run` interativo o Ctrl-C
+            // simplesmente parava de responder.
+            var signalled = 0;
+            void OnSignal(System.Runtime.InteropServices.PosixSignalContext ctx)
+            {
+                if (Interlocked.Exchange(ref signalled, 1) == 1)
+                    return;
 
-            await Client.ConnectAsync();
+                ctx.Cancel = true;
+                shutdown.Cancel();
+            }
+
+            using var sigint = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+                System.Runtime.InteropServices.PosixSignal.SIGINT, OnSignal);
+            using var sigterm = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+                System.Runtime.InteropServices.PosixSignal.SIGTERM, OnSignal);
+
+            try
+            {
+                await Client.ConnectAsync();
+            }
+            catch (Exception ex)
+            {
+                // Sem isto, um token revogado sobe pelo Main, cai no
+                // UnhandledException e o processo sai com erro - e o
+                // Restart=on-failure da unit reergue tudo a cada 10 segundos, num
+                // laco de IDENTIFY falho que o Discord acaba limitando. E o mesmo
+                // laco que a leitura de config ja aprendeu a evitar.
+                Console.WriteLine("[fatal] Nao consegui conectar ao gateway: " + ex.Message);
+                Console.WriteLine("        Se for 401, o token em config/config.jsonc foi revogado ou esta errado.");
+                Console.Out.Flush();
+                return;
+            }
 
             try
             {
@@ -177,6 +340,12 @@ namespace CommunityBot
             {
                 // Sinal recebido: segue para o encerramento limpo abaixo.
             }
+
+            // Espera o que estiver em voo ANTES de largar o gateway. Um softban
+            // com o ban aplicado e o unban ainda pendente vira banimento
+            // permanente se o processo morrer no meio, e sem nenhuma linha de log
+            // dizendo isso. O TimeoutStopSec=30 da unit cobre esta espera.
+            await AutoSoftban.DrainAsync(TimeSpan.FromSeconds(10));
 
             Console.WriteLine("[shutdown] sinal recebido; desconectando do gateway...");
             try
@@ -193,6 +362,37 @@ namespace CommunityBot
         }
 
         /// <summary>
+        /// Traduz a checagem que barrou o comando para uma frase util. Sem isso a
+        /// recusa chegaria como um "algo deu errado" generico, que nao diz a
+        /// quem usou nem se o problema e dele ou do bot.
+        /// </summary>
+        private static string DescribeFailedChecks(IEnumerable<ApplicationCommandCheckBaseAttribute> failed)
+        {
+            var reasons = new List<string>();
+
+            foreach (var check in failed)
+            {
+                switch (check)
+                {
+                    case ApplicationCommandRequireBotPermissionsAttribute:
+                        reasons.Add("**eu** não tenho a permissão necessária neste servidor — confira o cargo do bot");
+                        break;
+                    case ApplicationCommandRequireUserPermissionsAttribute:
+                        reasons.Add("você não tem a permissão que este comando exige");
+                        break;
+                    case ApplicationCommandRequireGuildAttribute:
+                        reasons.Add("este comando só funciona dentro de um servidor");
+                        break;
+                }
+            }
+
+            if (reasons.Count == 0)
+                reasons.Add("uma checagem de permissão recusou a execução");
+
+            return string.Join("\n", reasons.Distinct().Select(r => $"• {r}"));
+        }
+
+        /// <summary>
         /// Um lugar so para a lista de modulos: esquecer de registrar um modulo e
         /// o jeito mais facil de um comando novo simplesmente nao aparecer.
         /// </summary>
@@ -205,6 +405,8 @@ namespace CommunityBot
                 slash.RegisterGlobalCommands<Fun>();
                 slash.RegisterGlobalCommands<Utility>();
                 slash.RegisterGlobalCommands<BotLogs>();
+                slash.RegisterGlobalCommands<commands.Tickets>();
+                slash.RegisterGlobalCommands<commands.Config>();
                 return;
             }
 
@@ -213,6 +415,8 @@ namespace CommunityBot
             slash.RegisterGuildCommands<Fun>(guildId.Value);
             slash.RegisterGuildCommands<Utility>(guildId.Value);
             slash.RegisterGuildCommands<BotLogs>(guildId.Value);
+            slash.RegisterGuildCommands<commands.Tickets>(guildId.Value);
+            slash.RegisterGuildCommands<commands.Config>(guildId.Value);
         }
 
         /// <summary>
@@ -314,12 +518,17 @@ namespace CommunityBot
         /// </summary>
         private static void StartThreadPoolCanary()
         {
-            var last = DateTimeOffset.UtcNow;
+            // TickCount64, e nao o relogio de parede: um ajuste de NTP de +3s
+            // produzia um "[pool] thread pool atrasou 3.0s" que nunca aconteceu -
+            // classificado como AVISO e servido justamente no `/logs nivel:aviso`
+            // que se usa quando o bot parece lento. Tempo decorrido pede relogio
+            // monotonico.
+            var last = Environment.TickCount64;
 
             s_threadPoolCanary = new Timer(_ =>
             {
-                var now = DateTimeOffset.UtcNow;
-                var drift = now - last - TimeSpan.FromSeconds(10);
+                var now = Environment.TickCount64;
+                var drift = TimeSpan.FromMilliseconds(now - last) - TimeSpan.FromSeconds(10);
                 last = now;
 
                 if (drift > TimeSpan.FromSeconds(2))

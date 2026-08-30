@@ -13,6 +13,11 @@ using DisCatSharp.Enums.Core;
 
 namespace CommunityBot.commands
 {
+    // SEM ApplicationCommandRequireGuild no nivel da classe, de proposito: /ping
+    // e /help funcionam em DM e nao tocam em ctx.Guild. Os daqui que PRECISAM de
+    // servidor - /userinfo, /serverinfo, /poll - carregam o atributo no proprio
+    // metodo, e e assim que tem de continuar: ver a explicacao em BotLogs.cs
+    // sobre RequireUserPermissions ter IgnoreDms = true.
     internal class Utility : ApplicationCommandsModule
     {
         [SlashCommand("ping", "Mostra a latência do bot")]
@@ -104,14 +109,20 @@ namespace CommunityBot.commands
 
             var guild = ctx.Guild!;
 
-            // Em locais tipados: as coleções e o enum são nullable no contrato do
-            // DisCatSharp, e o embed não aceita valor nulo. Os `?? "—"` NAO sao
-            // decorativos - tirar qualquer um dos dois faz o compilador apontar
-            // CS8604 no DiscordEmbedField logo abaixo.
-            var members = guild.MemberCount.ToString() ?? "—";
+            // MemberCount e `int?` e PremiumTier e `PremiumTier?`. O `?.` antes do
+            // ToString e o que importa: `Nullable<T>.ToString()` devolve STRING
+            // VAZIA quando nao ha valor, nunca null, entao o `?? "—"` de antes era
+            // codigo morto - e o campo saia vazio. O Discord recusa campo de embed
+            // com valor vazio, entao o /serverinfo inteiro morria em "Falha no
+            // comando" sempre que um dos dois nao viesse preenchido.
+            //
+            // (O comentario antigo dizia que tirar os `??` daria CS8604. Isso vale
+            // para as colecoes abaixo, que sao de tipo referencia; para os dois
+            // nullables de valor, nao.)
+            var members = guild.MemberCount?.ToString() ?? "—";
             var roleCount = (guild.Roles?.Count ?? 0).ToString();
             var channelCount = (guild.Channels?.Count ?? 0).ToString();
-            var boost = guild.PremiumTier.ToString() ?? "—";
+            var boost = guild.PremiumTier?.ToString() ?? "—";
 
             var embed = new DiscordEmbedBuilder()
                 .WithTitle(guild.Name)
@@ -119,7 +130,11 @@ namespace CommunityBot.commands
                 .AddField(new DiscordEmbedField("ID", $"`{guild.Id}`", true))
                 .AddField(new DiscordEmbedField("Criado em",
                     $"<t:{guild.CreationTimestamp.ToUnixTimeSeconds()}:D>", true))
-                .AddField(new DiscordEmbedField("Dono", $"<@{guild.OwnerId}>", true))
+                // OwnerId tambem e `ulong?`, como MemberCount e PremiumTier: com
+                // ele nulo o campo saia como um "<@>" literal, que nao e mencao
+                // nem nome.
+                .AddField(new DiscordEmbedField("Dono",
+                    guild.OwnerId is { } ownerId ? $"<@{ownerId}>" : "—", true))
                 .AddField(new DiscordEmbedField("Membros", members, true))
                 .AddField(new DiscordEmbedField("Cargos", roleCount, true))
                 .AddField(new DiscordEmbedField("Canais", channelCount, true))
@@ -131,7 +146,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("poll", "Cria uma enquete de sim/não com botões")]
+        [SlashCommand("poll", "Cria uma enquete de sim/não com reações")]
         [ApplicationCommandRequireGuild]
         [ApplicationCommandRequireBotPermissions(Permissions.AddReactions | Permissions.ReadMessageHistory)]
         [SlashCommandCooldown(2, 30, CooldownBucketType.User)]
@@ -143,7 +158,7 @@ namespace CommunityBot.commands
             // ao reiniciar o bot nao serve para nada.
             var embed = new DiscordEmbedBuilder()
                 .WithTitle("📊 Enquete")
-                .WithDescription(Embeds.Trim(pergunta, 1500))
+                .WithDescription(Embeds.SafeTrim(pergunta, 1500))
                 .WithColor(DiscordColor.Blurple)
                 .WithFooter($"Criada por {ctx.User.UsernameWithDiscriminator}");
 
@@ -176,13 +191,21 @@ namespace CommunityBot.commands
                 .WithDescription("Os comandos de moderação só aparecem para quem tem a permissão correspondente no servidor.")
                 .WithColor(DiscordColor.Blurple)
                 .AddField(new DiscordEmbedField("Moderação",
-                    "`/ban` `/kick` `/timeout` `/untimeout` `/purge` `/slowmode` `/lock` `/unlock`", false))
+                    "`/ban` `/softban` `/kick` `/timeout` `/untimeout` `/purge` `/slowmode` `/lock` `/unlock`", false))
                 .AddField(new DiscordEmbedField("Advertências",
                     "`/warn` `/warnings` `/delwarn`", false))
+                .AddField(new DiscordEmbedField("Tickets",
+                    "`/ticket` `/ticket-fechar` `/ticket-add` `/ticket-remove` `/ticket-painel`", false))
                 .AddField(new DiscordEmbedField("Diversão",
                     "`/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/say`", false))
+                .AddField(new DiscordEmbedField("Configuração",
+                    "`/config ver` `/config log-moderacao` `/config auto-softban` " +
+                    "`/config tickets-categoria` `/config tickets-cargo` `/config tickets-log`", false))
+                // Sem /logs: ele e de quem administra o BOT, nao de quem usa o
+                // servidor, e anunciar um comando que so uma pessoa no mundo pode
+                // rodar so rende tentativa recusada.
                 .AddField(new DiscordEmbedField("Utilidade",
-                    "`/ping` `/userinfo` `/serverinfo` `/poll` `/help` `/logs`", false));
+                    "`/ping` `/userinfo` `/serverinfo` `/poll` `/help`", false));
 
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AddEmbed(embed).AsEphemeral());

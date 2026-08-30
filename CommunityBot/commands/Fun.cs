@@ -19,6 +19,12 @@ namespace CommunityBot.commands
     /// Todos têm cooldown: é o que impede um comando leve de virar ferramenta de
     /// flood num servidor grande. O cooldown é por usuário.
     /// </summary>
+    // SEM ApplicationCommandRequireGuild no nivel da classe, de proposito:
+    // /8ball, /roll, /coinflip, /choose e /avatar funcionam em DM e nao tocam em
+    // ctx.Guild. Todo comando daqui que PRECISA de servidor - ou que e
+    // privilegiado, como o /say - carrega o atributo no proprio metodo, e e assim
+    // que tem de continuar: ver a explicacao em BotLogs.cs sobre
+    // RequireUserPermissions ter IgnoreDms = true.
     internal class Fun : ApplicationCommandsModule
     {
         private static readonly string[] s_eightBall =
@@ -42,7 +48,7 @@ namespace CommunityBot.commands
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AddEmbed(new DiscordEmbedBuilder()
                     .WithTitle("🎱 Bola oito")
-                    .AddField(new DiscordEmbedField("Pergunta", Embeds.Trim(question, 900), false))
+                    .AddField(new DiscordEmbedField("Pergunta", Embeds.SafeTrim(question, 900), false))
                     .AddField(new DiscordEmbedField("Resposta", answer, false))
                     .WithColor(DiscordColor.Blurple)));
         }
@@ -114,7 +120,7 @@ namespace CommunityBot.commands
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AddEmbed(new DiscordEmbedBuilder()
                     .WithTitle("🤔 Escolhi")
-                    .WithDescription($"**{Embeds.Trim(picked, 200)}**")
+                    .WithDescription($"**{Embeds.SafeTrim(picked, 200)}**")
                     .WithFooter($"de {options.Count} opções")
                     .WithColor(DiscordColor.Blurple)));
         }
@@ -140,7 +146,13 @@ namespace CommunityBot.commands
         // Exige ManageMessages: sem isso qualquer um faria o bot falar, e mensagem
         // vinda do bot tem aparencia de coisa oficial.
         [ApplicationCommandRequireUserPermissions(Permissions.ManageMessages)]
+        // Declara a permissao que o comando de fato usa, em vez de descobrir a
+        // falta dela por excecao no meio da execucao.
+        [ApplicationCommandRequireBotPermissions(Permissions.SendMessages)]
         [ApplicationCommandRequireGuild]
+        // A doc da classe diz que TODOS os comandos daqui tem cooldown; este era o
+        // unico sem. E logo o que publica no canal.
+        [SlashCommandCooldown(2, 15, CooldownBucketType.User)]
         public async Task SayCommand(
             InteractionContext ctx,
             [Option("texto", "O que o bot vai dizer")] string texto)
@@ -158,6 +170,36 @@ namespace CommunityBot.commands
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
 
+            /*
+             * Quem usa precisa poder falar NESTE canal.
+             *
+             * O RequireUserPermissions confere ManageMessages - ja no escopo do
+             * canal, e nao do servidor, ao contrario do que este comentario dizia.
+             * Mas ManageMessages nao e SendMessages: sem esta checagem, um
+             * moderador barrado de escrever num canal especifico - ou num canal
+             * que outro moderador acabou de fechar com /lock - continuava
+             * falando la pela boca do bot. O /say emprestaria a permissao do bot
+             * para contornar uma restricao imposta a pessoa.
+             */
+            // Numa THREAD isto precisa olhar o canal PAI. PermissionsFor aplica so
+            // os overwrites do proprio canal e nao sobe para o pai, e thread nao
+            // tem overwrite proprio - entao dentro de uma thread o calculo caia
+            // para a permissao de servidor e ignorava qualquer negacao do canal.
+            // Um moderador barrado em #anuncios (ou um /lock recem-aplicado)
+            // continuava publicando pela boca do bot a partir de uma thread de la.
+            var inThread = ctx.Channel.Type is ChannelType.PublicThread or ChannelType.PrivateThread
+                or ChannelType.NewsThread;
+            var scope = inThread && ctx.Channel.Parent is { } parent ? parent : ctx.Channel;
+            var needed = inThread ? Permissions.SendMessagesInThreads : Permissions.SendMessages;
+
+            if ((ctx.Member!.PermissionsIn(scope) & needed) == 0)
+            {
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                    Embeds.Error("Sem permissão neste canal",
+                        "Você não pode enviar mensagens aqui, então também não pode fazer isso através de mim.")));
+                return;
+            }
+
             try
             {
                 await ctx.Channel.SendMessageAsync(builder);
@@ -171,6 +213,18 @@ namespace CommunityBot.commands
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                 Embeds.Ok("Enviado", "A mensagem foi publicada no canal.")));
+
+            // Registrado como qualquer outra acao privilegiada. Era a unica que
+            // nao deixava rastro em lugar NENHUM: a resposta e efemera, a mensagem
+            // sai assinada pelo bot, e o Audit Log do Discord nao cobre envio de
+            // mensagem. "Quem fez o bot dizer isso?" nao tinha resposta.
+            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Mensagem via /say",
+                null, ctx.User, null,
+                $"{ctx.Channel.Mention}: {Embeds.SafeTrim(texto, 500)}",
+                // Nao ha alvo: o rotulo padrao ("toda a conversa do canal") e do
+                // /purge e sairia como "Usuario: toda a conversa do canal" para
+                // uma mensagem publicada.
+                noTargetLabel: "—");
         }
     }
 }

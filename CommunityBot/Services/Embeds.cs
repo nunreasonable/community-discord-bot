@@ -33,6 +33,45 @@ namespace CommunityBot.Services
                 .WithColor(DiscordColor.Blurple)
                 .Build();
 
+        /// <summary>
+        /// Texto de usuario indo para dentro de um EMBED.
+        ///
+        /// Descricao de embed renderiza link mascarado: `[clique aqui](https://…)`
+        /// vira um link com rotulo arbitrario, coisa que mensagem comum nao faz.
+        /// Sem isto, /poll, /8ball e /choose - todos abertos a qualquer membro -
+        /// entregam a qualquer um um cartao ASSINADO PELO BOT com um link cujo
+        /// destino nao aparece. E phishing com a cara da casa, e e exatamente o
+        /// risco que faz o /say exigir ManageMessages: aquele portao fica
+        /// meio inutil se o mesmo efeito sai por um comando aberto.
+        ///
+        /// Escapar o `[` basta: sem colchete de abertura nao se forma rotulo, e a
+        /// URL crua que sobra mostra para onde vai. A barra invertida nao aparece
+        /// no texto final.
+        /// </summary>
+        public static string Safe(string? value) =>
+            (value ?? string.Empty)
+                // A ORDEM E OBRIGATORIA. Escapar so o `[` era contornavel com uma
+                // barra invertida: a entrada `\[texto](url)` virava `\\[`, o
+                // Discord consumia `\\` como uma barra escapada e SOLTAVA o
+                // colchete - o link mascarado voltava a valer, dentro de um embed
+                // assinado pelo bot. Escapar a propria barra primeiro fecha isso;
+                // inverter as duas linhas reduplicaria as barras recem-inseridas.
+                .Replace("\\", "\\\\")
+                .Replace("[", "\\[");
+
+        /// <summary>
+        /// Escapa e SO ENTAO corta, no limite pedido.
+        ///
+        /// A ordem importa e a inversa e uma armadilha: `Safe(Trim(x, 900))`
+        /// corta em 900 e depois dobra cada `[` em `\[`, entao 900 colchetes
+        /// viram 1800 caracteres - acima do teto de 1024 de um campo de embed.
+        /// O Discord recusa a mensagem inteira, e no caminho do fechamento de
+        /// ticket isso significava o transcript nao subir por causa de um texto
+        /// que alguem colou. Compondo na ordem certa uma vez so, nenhum chamador
+        /// precisa lembrar disso.
+        /// </summary>
+        public static string SafeTrim(string? value, int max) => Trim(Safe(value), max);
+
         /// <summary>Corta preservando o limite do Discord, com reticencias.</summary>
         public static string Trim(string? value, int max)
         {
