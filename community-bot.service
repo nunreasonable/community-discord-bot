@@ -1,14 +1,27 @@
 [Unit]
 Description=CommunityBot - bot de moderacao e diversao
-After=network-online.target
-Wants=network-online.target
+# NAO use After/Wants=network-online.target aqui: esse target so existe no
+# systemd de SISTEMA. No gerenciador de usuario ele nao existe, entao as duas
+# diretivas viravam no-op silencioso - o bot subia com a rede ainda no ar e o
+# primeiro contato com discord.com falhava com "Resource temporarily
+# unavailable". O gate de DNS abaixo e o substituto que de fato funciona.
 
 [Service]
 Type=simple
+
+# Espera o DNS resolver antes de subir, no maximo 60s. O prefixo "-" faz o
+# systemd ignorar o codigo de saida: se estourar o tempo, o bot sobe assim
+# mesmo e o retry do DSharpPlus assume.
+ExecStartPre=-/usr/bin/timeout 60 /usr/bin/bash -c 'until getent ahostsv4 discord.com >/dev/null 2>&1; do sleep 1; done'
+
 # O bot resolve config/ e data/ a partir do diretorio do EXECUTAVEL
 # (AppContext.BaseDirectory), nao do cwd - entao esta linha nao e mais o que
 # faz o config ser encontrado. Fica porque um cwd previsivel ainda ajuda em
 # caminhos relativos que apareçam em log e em core dump.
+#
+# Consequencia pratica: trocar Debug<->Release no ExecStart troca junto o
+# diretorio de estado. O data/ precisa ser movido a mao na troca, senao o bot
+# sobe com tickets e guild-settings zerados.
 WorkingDirectory=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot
 # Release, nao Debug: Debug sai sem otimizacao e com as assercoes ligadas.
 # Publicar com `dotnet publish -c Release -o bin/Release/net9.0` antes do
