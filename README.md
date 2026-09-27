@@ -13,6 +13,11 @@ Os comandos são todos novos — os do ccore são do regimento e não vieram jun
 
 ## Colocar para rodar
 
+Requer o **SDK do .NET 10** (`sudo dnf install dotnet-sdk-10.0`). O projeto tem
+`TargetFramework` `net10.0` e o `global.json` fixa o SDK em 10.0.x. Até
+setembro/2026 era .NET 9, que é STS e perde o suporte em 10/11/2026; o .NET 10 é
+LTS.
+
 1. Crie uma aplicação em <https://discord.com/developers/applications>.
 2. Em **Bot**, ligue o intent privilegiado **Server Members**. É o que permite
    ler cargos para a checagem de hierarquia.
@@ -54,7 +59,7 @@ comando, rodado da raiz, saía com "não consegui ler config/config.jsonc".)
 Para subir como serviço:
 
 ```bash
-dotnet publish CommunityBot/CommunityBot.csproj -c Release -o CommunityBot/bin/Release/net9.0
+dotnet publish CommunityBot/CommunityBot.csproj -c Release -o CommunityBot/bin/Release/net10.0
 cp community-bot.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now community-bot
@@ -62,8 +67,18 @@ journalctl --user -u community-bot -f
 ```
 
 O `publish -c Release` não é opcional: a unit aponta para
-`bin/Release/net9.0/CommunityBot`. Antes ela apontava para o build de **Debug**,
+`bin/Release/net10.0/CommunityBot`. Antes ela apontava para o build de **Debug**,
 que roda sem otimização e com as asserções ligadas.
+
+**Trocar o TFM move o estado.** Como o `data/` mora ao lado do executável, a
+pasta de saída muda junto com o `TargetFramework`. Na subida do .NET 9 para o 10
+o `data/` foi copiado à mão antes do restart:
+
+```bash
+cp -a CommunityBot/bin/Release/net9.0/data CommunityBot/bin/Release/net10.0/
+```
+
+Sem isso o bot sobe com tickets, avisos e configuração por servidor zerados.
 
 ## Config
 

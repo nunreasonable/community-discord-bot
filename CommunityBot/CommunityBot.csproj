@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>CommunityBot</RootNamespace>
@@ -33,5 +33,38 @@
     <PackageReference Include="DisCatSharp.Interactivity" Version="10.7.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
+
+  <!--
+    NuGet.Protocol entra transitivo pelo DisCatSharp 10.7.0 na 7.3.0, que tem o
+    aviso GHSA-g4vj-cjjj-v7hg (NU1901). A referencia direta sobe o grafo inteiro
+    do NuGet.* para a versao corrigida. Pode sair quando o DisCatSharp subir a
+    dele.
+  -->
+  <ItemGroup>
+    <PackageReference Include="NuGet.Protocol" Version="7.9.0" />
+  </ItemGroup>
+
+  <!--
+    DV2001: o DisCatSharp arrasta o Microsoft.DependencyValidation.Analyzers, que
+    so serve para diagramas de validacao do Visual Studio. Nao ha nenhum aqui.
+  -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);DV2001</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    O DisCatSharp.Interactivity traz o Backport.System.Threading.Lock, cujo
+    gerador de codigo exige o Roslyn 5.3, mais novo que o 5.0 do SDK 10.0.1xx
+    do Fedora. Ele vira o aviso CS9057 e nao roda de qualquer forma - e no net10.0 o
+    System.Threading.Lock ja e nativo, entao o polyfill nao tem o que gerar.
+    ExcludeAssets="analyzers" num PackageReference direto nao basta, porque o
+    ativo continua chegando pela dependencia transitiva; por isso a remocao e
+    feita aqui, antes do compilador.
+  -->
+  <Target Name="DropBackportLockAnalyzer" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.NuGetPackageId)' == 'Backport.System.Threading.Lock'" />
+    </ItemGroup>
+  </Target>
 
 </Project>

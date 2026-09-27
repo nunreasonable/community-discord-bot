@@ -19,14 +19,14 @@ ExecStartPre=-/usr/bin/timeout 60 /usr/bin/bash -c 'until getent ahostsv4 discor
 # faz o config ser encontrado. Fica porque um cwd previsivel ainda ajuda em
 # caminhos relativos que apareçam em log e em core dump.
 #
-# Consequencia pratica: trocar Debug<->Release no ExecStart troca junto o
-# diretorio de estado. O data/ precisa ser movido a mao na troca, senao o bot
-# sobe com tickets e guild-settings zerados.
+# Consequencia pratica: trocar Debug<->Release, ou o TFM (net9.0 -> net10.0),
+# no ExecStart troca junto o diretorio de estado. O data/ precisa ser movido a
+# mao na troca, senao o bot sobe com tickets e guild-settings zerados.
 WorkingDirectory=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot
 # Release, nao Debug: Debug sai sem otimizacao e com as assercoes ligadas.
-# Publicar com `dotnet publish -c Release -o bin/Release/net9.0` antes do
+# Publicar com `dotnet publish -c Release -o bin/Release/net10.0` antes do
 # primeiro start (ver README).
-ExecStart=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot/bin/Release/net9.0/CommunityBot
+ExecStart=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot/bin/Release/net10.0/CommunityBot
 
 # O IPv6 de saida desta maquina nao funciona; sem isto o .NET perde tempo em
 # timeouts ao falar com a API do Discord. Mesmo motivo do ccore-bot.service.
