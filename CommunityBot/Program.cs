@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CommunityBot.commands;
 using CommunityBot.config;
 using CommunityBot.Services;
+using CommunityBot.Services.Roblox;
 using DisCatSharp;
 using DisCatSharp.ApplicationCommands;
 using DisCatSharp.ApplicationCommands.Attributes;
@@ -105,6 +106,17 @@ namespace CommunityBot
             // porque nenhum marca Handled num id que nao e seu.
             Client.ComponentInteractionCreated += TicketComponents.OnComponent;
             Client.GuildDownloadCompleted += TicketService.ReportStatusAsync;
+
+            // Botoes da verificacao Roblox (painel, "Ja autorizei", desvincular).
+            // Mesmo esquema dos tickets: handler proprio, Handled so para
+            // custom id "verify:".
+            Client.ComponentInteractionCreated += VerificationFlow.OnComponent;
+
+            // Quem entra ja vinculado recebe cargos e apelido na hora; quem entra
+            // sem vinculo recebe o cargo de nao verificado, se houver. Inerte em
+            // servidor que nao configurou a verificacao. O intent GuildMembers,
+            // que entrega este evento, ja estava ligado pela hierarquia.
+            Client.GuildMemberAdded += VerificationService.OnMemberAddedAsync;
 
             // Traz as chaves antigas do config.jsonc para a configuracao por
             // servidor, uma vez so. Roda aqui, e nao antes de conectar, porque
@@ -290,6 +302,11 @@ namespace CommunityBot
             // passaria batido.
             await GuildSettingsStore.Instance.LoadAsync();
 
+            // Pelo mesmo motivo: a entrada de membro consulta o vinculo pelo
+            // snapshot, e uma entrada logo depois do connect nao pode achar a
+            // lista vazia.
+            await RobloxLinkStore.Instance.LoadAsync();
+
             // Shutdown gracioso. A unit do systemd usa KillSignal=SIGINT, e antes
             // o Task.Delay(-1) so era interrompido pela morte do processo: sem
             // DisconnectAsync (o gateway ficava pendurado do lado do Discord) e
@@ -407,6 +424,8 @@ namespace CommunityBot
                 slash.RegisterGlobalCommands<BotLogs>();
                 slash.RegisterGlobalCommands<commands.Tickets>();
                 slash.RegisterGlobalCommands<commands.Config>();
+                slash.RegisterGlobalCommands<Verification>();
+                slash.RegisterGlobalCommands<Binds>();
                 return;
             }
 
@@ -417,6 +436,8 @@ namespace CommunityBot
             slash.RegisterGuildCommands<BotLogs>(guildId.Value);
             slash.RegisterGuildCommands<commands.Tickets>(guildId.Value);
             slash.RegisterGuildCommands<commands.Config>(guildId.Value);
+            slash.RegisterGuildCommands<Verification>(guildId.Value);
+            slash.RegisterGuildCommands<Binds>(guildId.Value);
         }
 
         /// <summary>

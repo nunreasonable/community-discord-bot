@@ -40,8 +40,8 @@ LTS.
    os comandos globais não aparecem no servidor — e com as permissões que os
    comandos exigem: **View Channel**,
    **Send Messages**, Ban Members, Kick Members, Moderate Members, Manage Messages,
-   Manage Channels, Manage Roles, Read Message History, Attach Files e Add
-   Reactions.
+   Manage Channels, Manage Roles, Manage Nicknames, Read Message History, Attach
+   Files e Add Reactions.
 
    Três delas costumam ser esquecidas, e cada uma quebra alguma coisa em
    silêncio: sem **View Channel** o gateway não entrega as mensagens do canal
@@ -82,14 +82,16 @@ Sem isso o bot sobe com tickets, avisos e configuração por servidor zerados.
 
 ## Config
 
-O arquivo tem **duas** chaves. Todo o resto — canal de log, armadilha do softban
-automático, tickets — é **por servidor** e se configura pelo comando `/config`,
-por quem tem **Gerenciar Servidor**, sem acesso a esta máquina.
+O arquivo tem **três** chaves. Todo o resto — canal de log, armadilha do softban
+automático, tickets, cargos da verificação Roblox — é **por servidor** e se
+configura pelo comando `/config`, por quem tem **Gerenciar Servidor**, sem
+acesso a esta máquina.
 
 | Chave | O que faz |
 |---|---|
 | `token` | Token da aplicação. |
 | `guildIds` | Atalho de desenvolvimento. **Deixe vazio**: os comandos são registrados globalmente e valem em todo servidor, inclusive nos que o bot entrar depois. Ver abaixo. |
+| `robloxVerify` | Ligação com o Worker da verificação Roblox: `startUrl`, `resultUrl` e `apiSecret`. Sem o `apiSecret` o `/verify` responde que a verificação está indisponível e nada mais muda. Ver [Verificação Roblox](#verificação-roblox). |
 
 ### Onde os comandos são registrados
 
@@ -124,6 +126,8 @@ Toda entrada em servidor novo rende uma linha no log, com nome, id e tamanho.
 
 `/config ver` `/config log-moderacao` `/config auto-softban`
 `/config tickets-categoria` `/config tickets-cargo` `/config tickets-log`
+`/config verificacao-cargo` `/config verificacao-nao-verificado`
+`/config verificacao-apelido` `/config verificacao-idade-minima`
 
 Cada subcomando mexe numa chave e tem uma opção opcional, onde **omitir a opção
 limpa o valor**. Um comando só com várias opções opcionais seria mais curto e
@@ -281,6 +285,72 @@ que ninguém mais consegue fechar pelo bot.
 Como no vigia de canal, o bot diz na subida se os tickets estão de pé — ou lista
 de uma vez tudo o que está errado na configuração, em vez de fazer descobrir um
 problema por reinicialização.
+
+### Verificação Roblox
+`/verify` `/unverify` `/update` `/whois` `/verify-painel`
+`/bind adicionar` `/bind remover` `/bind listar`
+
+No molde do BloxLink, com os mesmos nomes de comando. O vínculo Discord→Roblox
+é **global**: quem verifica uma vez fica verificado em todo servidor que usa o
+bot, e ao entrar num servidor novo já recebe os cargos. Cada servidor decide o
+que a verificação dá, pelo `/config verificacao-*` e pelo `/bind`:
+
+- **cargo de verificado** e **cargo de não verificado** (este é dado a quem
+  entra sem vínculo e tirado ao verificar);
+- **binds de grupo**: "quem está no grupo X com rank entre A e B ganha o cargo
+  Y". Rank 0 é "fora do grupo". Dois binds podem apontar para o mesmo cargo, e
+  o cargo fica se qualquer um casar;
+- **apelido**: nome de usuário, nome de exibição, ou "Exibição (@usuário)";
+- **idade mínima** da conta Roblox, em dias. Conta mais nova continua vinculada,
+  mas neste servidor é tratada como não verificada.
+
+**Como a posse é provada.** O `/verify` responde com um botão para
+`https://daeese.me/oauth/roblox/start`. Lá o Worker `roblox-verify-worker` (no
+repo do site) faz a pessoa entrar **primeiro com o Discord, depois com o
+Roblox**, pelo OAuth oficial dos dois. O resultado — "Discord X é dono do Roblox
+Y" — fica no Worker por meia hora; o bot o busca a cada 4 s por 10 minutos (ou
+no botão "Já autorizei"), grava em `data/roblox-links.json` e aplica no servidor.
+
+O passo pelo Discord no navegador não é enfeite. Com um link que carregasse um
+código do `/verify`, bastava repassá-lo: a vítima autorizaria o Roblox **dela**
+e a conta cairia no Discord de quem mandou o link, com os cargos de rank junto.
+Sendo o Discord do navegador que decide, repassar o link só faz a vítima
+vincular a conta a si mesma.
+
+**O que ela não faz.** O bot não varre o servidor: os cargos mudam em eventos
+(`/verify`, `/update`, entrada no servidor, `/unverify`). Quem já estava no
+servidor antes de um cargo ou bind ser configurado recebe no próximo `/update`.
+Uma falha ao ler os grupos no Roblox **não tira** cargo nenhum — os de bind
+ficam como estavam e o motivo aparece como aviso.
+
+**Hierarquia.** O cargo de verificado, o de não verificado e o de cada bind
+precisam estar abaixo do cargo mais alto **do bot** e de **quem configura**.
+Sem a segunda regra, alguém com Gerenciar Servidor abaixo do cargo de admin
+apontaria o cargo de verificado para o de admin e se verificaria. O `/bind`
+exige Gerenciar Servidor **e** Gerenciar Cargos. O bot não muda o apelido do
+dono do servidor nem de quem está acima dele — limite do próprio Discord.
+
+**Ligar pela primeira vez** (uma vez por instalação):
+
+1. Registrar um app OAuth 2.0 em <https://create.roblox.com/dashboard/credentials>.
+   Exige conta Roblox com **ID verificado**. Scopes `openid` e `profile`, redirect
+   `https://daeese.me/oauth/roblox/callback`, e as URLs de termos e privacidade
+   acima. **Até passar pela revisão da Roblox o app fica em modo privado,
+   limitado a poucos usuários** (a documentação fala em 100 e o painel em 10):
+   depois de testar, publique-o para a revisão. Contas Roblox com menos de 13
+   anos não conseguem autorizar app nenhum.
+2. No Discord Developer Portal → Sollarety → OAuth2 → Redirects, acrescentar
+   `https://daeese.me/oauth/roblox/discord`, exatamente assim.
+3. Pôr o Client ID do Roblox em `ROBLOX_CLIENT_ID` no `wrangler.toml` do Worker e,
+   de dentro de `cloudflare/roblox-verify-worker`, os quatro secrets:
+   `DISCORD_CLIENT_SECRET` (o mesmo do fun-oauth), `ROBLOX_CLIENT_SECRET`,
+   `SESSION_KEY` e `BOT_API_SECRET` (valores aleatórios longos, ex.:
+   `openssl rand -base64 48`).
+4. Pôr o mesmo valor do `BOT_API_SECRET` em `robloxVerify.apiSecret` no
+   `config.jsonc` de cada máquina que roda o bot.
+5. Servidores convidados antes desta versão precisam dar **Gerenciar Apelidos**
+   ao cargo do bot à mão, se quiserem o apelido; o preset "Full" do convite já
+   a inclui.
 
 ### Diversão
 `/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/say`

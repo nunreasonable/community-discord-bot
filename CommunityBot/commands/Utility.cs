@@ -196,11 +196,16 @@ namespace CommunityBot.commands
                     "`/warn` `/warnings` `/delwarn`", false))
                 .AddField(new DiscordEmbedField("Tickets",
                     "`/ticket` `/ticket-fechar` `/ticket-add` `/ticket-remove` `/ticket-painel`", false))
+                .AddField(new DiscordEmbedField("Verificação Roblox",
+                    "`/verify` `/unverify` `/update` `/whois` `/verify-painel` " +
+                    "`/bind adicionar` `/bind remover` `/bind listar`", false))
                 .AddField(new DiscordEmbedField("Diversão",
                     "`/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/say`", false))
                 .AddField(new DiscordEmbedField("Configuração",
                     "`/config ver` `/config log-moderacao` `/config auto-softban` " +
-                    "`/config tickets-categoria` `/config tickets-cargo` `/config tickets-log`", false))
+                    "`/config tickets-categoria` `/config tickets-cargo` `/config tickets-log` " +
+                    "`/config verificacao-cargo` `/config verificacao-nao-verificado` " +
+                    "`/config verificacao-apelido` `/config verificacao-idade-minima`", false))
                 // Sem /logs: ele e de quem administra o BOT, nao de quem usa o
                 // servidor, e anunciar um comando que so uma pessoa no mundo pode
                 // rodar so rende tentativa recusada.

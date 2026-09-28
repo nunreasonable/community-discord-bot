@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityBot.Services;
+using CommunityBot.Services.Roblox;
 using DisCatSharp.ApplicationCommands;
 using DisCatSharp.ApplicationCommands.Attributes;
 using DisCatSharp.ApplicationCommands.Context;
@@ -57,9 +58,20 @@ namespace CommunityBot.commands
                             ? $"⚠️ cargo `{settings.ticketStaffRoleId}` não existe mais"
                             : "— *(`/config tickets-cargo`)*", true))
                 .AddField(new DiscordEmbedField("Tickets — canal de log",
-                    Describe(guild, settings?.ticketLogChannelId, "`/config tickets-log`"), true));
+                    Describe(guild, settings?.ticketLogChannelId, "`/config tickets-log`"), true))
+                .AddField(new DiscordEmbedField("Verificação — cargo",
+                    DescribeRole(guild, settings?.verifiedRoleId, "`/config verificacao-cargo`"), true))
+                .AddField(new DiscordEmbedField("Verificação — não verificado",
+                    DescribeRole(guild, settings?.unverifiedRoleId, "`/config verificacao-nao-verificado`"), true))
+                .AddField(new DiscordEmbedField("Verificação — apelido",
+                    NicknameFormats.Describe(settings?.nicknameFormat), true))
+                .AddField(new DiscordEmbedField("Verificação — idade mínima",
+                    settings?.minAccountAgeDays is > 0 and var days ? $"{days} dia(s)" : "desligada", true))
+                .AddField(new DiscordEmbedField("Binds de grupo",
+                    settings?.groupBinds is { Count: > 0 } binds ? $"{binds.Count} (`/bind listar`)" : "— *(`/bind adicionar`)*", true));
 
-            var pending = Pending(guild, settings);
+            var verifyReady = (await VerificationFlow.ReadSettingsAsync()).IsConfigured;
+            var pending = Pending(guild, settings, verifyReady);
             if (pending.Count > 0)
                 embed.AddField(new DiscordEmbedField("Falta para funcionar",
                     string.Join("\n", pending.Select(p => $"• {p}")), false));
@@ -162,6 +174,89 @@ namespace CommunityBot.commands
                     "Sem canal de log não há onde arquivar, então fechar um ticket passa a **trancar** o " +
                     "canal em vez de apagá-lo — a conversa não se perde sem cópia."));
 
+        [SlashCommand("verificacao-cargo", "Cargo que quem verifica a conta Roblox recebe")]
+        public Task VerifiedRoleCommand(
+            InteractionContext ctx,
+            [Option("cargo", "Deixe vazio para não dar cargo nenhum")] DiscordRole? cargo = null) =>
+            ApplyRoleAsync(ctx, cargo,
+                conflict: s => s.unverifiedRoleId,
+                assign: (s, v) => s.verifiedRoleId = v,
+                onSet: r => Embeds.Ok("Cargo de verificado definido",
+                    $"Quem vincular a conta Roblox recebe {r.Mention} — na hora, pelo `/verify`, ou ao entrar, se já " +
+                    "tiver verificado em outro servidor. Quem já estava verificado antes recebe no próximo `/update`."),
+                onClear: () => Embeds.Ok("Cargo de verificado desligado",
+                    "Verificar a conta deixa de dar cargo. Quem já o tem continua com ele."));
+
+        [SlashCommand("verificacao-nao-verificado", "Cargo de quem ainda não vinculou a conta Roblox")]
+        public Task UnverifiedRoleCommand(
+            InteractionContext ctx,
+            [Option("cargo", "Deixe vazio para desligar")] DiscordRole? cargo = null) =>
+            ApplyRoleAsync(ctx, cargo,
+                conflict: s => s.verifiedRoleId,
+                assign: (s, v) => s.unverifiedRoleId = v,
+                // O cargo so e dado em eventos (entrada, /update, /unverify): o
+                // bot nao varre o servidor. A resposta diz isso para ninguem
+                // esperar ver os membros antigos com o cargo de uma hora para a outra.
+                onSet: r => Embeds.Ok("Cargo de não verificado definido",
+                    $"Quem **entrar** sem conta vinculada recebe {r.Mention}, e perde o cargo ao verificar. " +
+                    "Os membros que já estão no servidor não recebem sozinhos — só ao rodar `/update`."),
+                onClear: () => Embeds.Ok("Cargo de não verificado desligado",
+                    "Ninguém mais recebe cargo por não ter verificado. Quem já o tem continua com ele."));
+
+        [SlashCommand("verificacao-apelido", "Como o bot escreve o apelido de quem verifica a conta Roblox")]
+        public async Task NicknameCommand(
+            InteractionContext ctx,
+            [Choice("Não mexer no apelido", NicknameFormats.None)]
+            [Choice("Nome de usuário do Roblox", NicknameFormats.Username)]
+            [Choice("Nome de exibição do Roblox", NicknameFormats.Display)]
+            [Choice("Exibição (@usuário), como no BloxLink", NicknameFormats.Smart)]
+            [Option("formato", "O que vai no apelido")] string formato)
+        {
+            await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder().AsEphemeral());
+
+            var value = formato is NicknameFormats.Username or NicknameFormats.Display or NicknameFormats.Smart
+                ? formato
+                : null;
+
+            await GuildSettingsStore.Instance.SetAsync(ctx.Guild!.Id, ctx.User.Id, s => s.nicknameFormat = value);
+
+            var warning = value is not null && ctx.Guild.CurrentMember is { } bot &&
+                          (bot.Permissions & (Permissions.ManageNicknames | Permissions.Administrator)) == 0
+                ? "\n\n⚠️ Me falta **Gerenciar Apelidos**: sem ela, nenhum apelido vai mudar."
+                : string.Empty;
+
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(value is null
+                ? Embeds.Ok("Apelido livre", "O bot não mexe mais no apelido de quem verifica.")
+                : Embeds.Ok("Formato de apelido definido",
+                    $"Quem verificar passa a se chamar pelo **{NicknameFormats.Describe(value)}**. O dono do servidor e " +
+                    $"quem está acima do meu cargo ficam de fora, por limite do Discord.{warning}")));
+        }
+
+        [SlashCommand("verificacao-idade-minima", "Recusa contas Roblox mais novas que isso, em dias")]
+        public async Task MinimumAgeCommand(
+            InteractionContext ctx,
+            [Option("dias", "Idade mínima da conta Roblox, em dias. 0 desliga")] long dias)
+        {
+            await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder().AsEphemeral());
+
+            if (dias is < 0 or > 3650)
+            {
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                    Embeds.Error("Valor inválido", "A idade mínima vai de 0 (desligada) a 3650 dias.")));
+                return;
+            }
+
+            await GuildSettingsStore.Instance.SetAsync(ctx.Guild!.Id, ctx.User.Id, s => s.minAccountAgeDays = (int)dias);
+
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(dias == 0
+                ? Embeds.Ok("Filtro anti-alt desligado", "Qualquer conta Roblox vinculada passa a valer neste servidor.")
+                : Embeds.Ok("Filtro anti-alt ligado",
+                    $"Contas Roblox com menos de **{dias} dia(s)** continuam podendo se vincular, mas neste servidor " +
+                    "são tratadas como não verificadas: sem o cargo de verificado e sem os de grupo.")));
+        }
+
         /// <summary>
         /// O caminho comum dos subcomandos de canal: confere que o canal e deste
         /// servidor, confere as permissoes que aquele recurso vai precisar, grava,
@@ -214,6 +309,56 @@ namespace CommunityBot.commands
                 channel is null ? onClear() : onSet(channel)));
         }
 
+        /// <summary>
+        /// O caminho comum dos subcomandos de cargo da verificacao. O cargo passa
+        /// pela mesma checagem do /bind: o bot vai distribui-lo sozinho, entao ele
+        /// nao pode estar acima de quem configura nem acima do bot.
+        /// </summary>
+        private static async Task ApplyRoleAsync(
+            InteractionContext ctx,
+            DiscordRole? role,
+            Func<GuildSettings, ulong?> conflict,
+            Action<GuildSettings, ulong?> assign,
+            Func<DiscordRole, DiscordEmbed> onSet,
+            Func<DiscordEmbed> onClear)
+        {
+            await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder().AsEphemeral());
+
+            if (role is not null)
+            {
+                if (VerificationService.CheckAssignableRole(ctx.Guild!, ctx.Member!, role) is { } refusal)
+                {
+                    await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(refusal));
+                    return;
+                }
+
+                // Verificado e nao verificado no mesmo cargo: o bot daria e tiraria
+                // o mesmo cargo a cada evento.
+                if (GuildSettingsStore.For(ctx.Guild!.Id) is { } current && conflict(current) == role.Id)
+                {
+                    await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("Mesmo cargo",
+                        $"{role.Mention} já é o outro cargo da verificação. Verificado e não verificado precisam ser diferentes.")));
+                    return;
+                }
+            }
+
+            await GuildSettingsStore.Instance.SetAsync(ctx.Guild!.Id, ctx.User.Id, s => assign(s, role?.Id));
+
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                role is null ? onClear() : onSet(role)));
+        }
+
+        private static string DescribeRole(DiscordGuild guild, ulong? roleId, string command)
+        {
+            if (roleId is not { } id)
+                return $"— *({command})*";
+
+            return guild.GetRole(id) is { } role
+                ? role.Mention
+                : $"⚠️ cargo `{id}` não existe mais";
+        }
+
         private static string Describe(DiscordGuild guild, ulong? channelId, string command)
         {
             if (channelId is not { } id)
@@ -228,9 +373,14 @@ namespace CommunityBot.commands
         /// O que ainda falta para cada recurso funcionar. E a pergunta que quem
         /// configura de fato tem, e que uma lista de valores nao responde.
         /// </summary>
-        private static List<string> Pending(DiscordGuild guild, GuildSettings? settings)
+        private static List<string> Pending(DiscordGuild guild, GuildSettings? settings, bool verifyReady)
         {
             var pending = new List<string>();
+
+            var verification = VerificationService.IsConfigured(settings);
+            if (verification && !verifyReady)
+                pending.Add("a verificação Roblox está configurada aqui, mas **quem administra o bot** ainda não a ligou: " +
+                            "o `/verify` responde que está indisponível");
 
             var hasCategory = settings?.ticketCategoryId is > 0;
             var hasRole = settings?.ticketStaffRoleId is > 0;
@@ -254,6 +404,15 @@ namespace CommunityBot.commands
 
                 if (settings?.autoSoftbanChannelId is > 0 && (bot.Permissions & Permissions.BanMembers) == 0)
                     pending.Add("me falta **Banir Membros**, e sem ela todo softban automático vai falhar");
+
+                var usesRoles = settings is not null &&
+                                (settings.verifiedRoleId is > 0 || settings.unverifiedRoleId is > 0 || settings.groupBinds.Count > 0);
+                if (usesRoles && (bot.Permissions & (Permissions.ManageRoles | Permissions.Administrator)) == 0)
+                    pending.Add("me falta **Gerenciar Cargos**, e sem ela a verificação não dá nem tira cargo nenhum");
+
+                if (settings?.nicknameFormat is not (null or NicknameFormats.None) &&
+                    (bot.Permissions & (Permissions.ManageNicknames | Permissions.Administrator)) == 0)
+                    pending.Add("me falta **Gerenciar Apelidos**, e sem ela o apelido de quem verifica não muda");
             }
 
             return pending;

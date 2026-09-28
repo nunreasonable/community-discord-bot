@@ -13,14 +13,28 @@
     // o resto - servidor novo inclusive. Voltar para global exige uma subida com
     // a lista vazia, que e quando o bot recolhe as copias por servidor; sem isso
     // elas se somam as globais e cada comando aparece duas vezes.
-    "guildIds": []
+    "guildIds": [],
+
+    // VERIFICACAO ROBLOX. Sem o apiSecret o /verify responde que a verificacao
+    // esta indisponivel e nada mais muda - o resto do bot funciona igual.
+    //
+    // O apiSecret e o MESMO valor do secret BOT_API_SECRET do Worker
+    // (cloudflare/roblox-verify-worker no repo do site). Quem tem esse valor le
+    // o resultado pendente de qualquer pessoa, entao ele mora aqui, fora do git,
+    // como o token. As duas URLs so mudam se o Worker mudar de rota.
+    "robloxVerify": {
+        "startUrl": "https://daeese.me/oauth/roblox/start",
+        "resultUrl": "https://daeese.me/oauth/roblox/result",
+        "apiSecret": ""
+    }
 
     // O RESTO DA CONFIGURACAO NAO MORA MAIS AQUI.
     //
-    // Canal de log de moderacao, canal-armadilha do softban automatico e os tres
-    // ajustes de ticket agora sao POR SERVIDOR, e quem os define e quem tem
-    // Gerenciar Servidor, pelo comando /config - sem precisar de acesso a esta
-    // maquina. Use /config ver para ver como esta.
+    // Canal de log de moderacao, canal-armadilha do softban automatico, os tres
+    // ajustes de ticket e os cargos da verificacao Roblox agora sao POR
+    // SERVIDOR, e quem os define e quem tem Gerenciar Servidor, pelo comando
+    // /config - sem precisar de acesso a esta maquina. Use /config ver para ver
+    // como esta.
     //
     // Se voce ja tinha as chaves antigas preenchidas aqui, o bot as move sozinho
     // para o novo formato na primeira subida.

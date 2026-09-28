@@ -24,6 +24,16 @@ namespace CommunityBot.Services
         public ulong? ticketStaffRoleId { get; set; }
         public ulong? ticketLogChannelId { get; set; }
 
+        // Verificacao Roblox. O vinculo em si e global (RobloxLinkStore); aqui
+        // mora so o que ESTE servidor faz com ele.
+        public ulong? verifiedRoleId { get; set; }
+        public ulong? unverifiedRoleId { get; set; }
+        /// <summary>Uma das chaves de NicknameFormats. Nulo e "nenhum": o bot nao mexe no apelido.</summary>
+        public string? nicknameFormat { get; set; }
+        /// <summary>Idade minima da conta Roblox, em dias. Zero desliga o filtro.</summary>
+        public int minAccountAgeDays { get; set; }
+        public List<GroupBind> groupBinds { get; set; } = new();
+
         public DateTimeOffset? updatedAtUtc { get; set; }
         public ulong? updatedById { get; set; }
 
@@ -35,8 +45,47 @@ namespace CommunityBot.Services
             ticketCategoryId = ticketCategoryId,
             ticketStaffRoleId = ticketStaffRoleId,
             ticketLogChannelId = ticketLogChannelId,
+            verifiedRoleId = verifiedRoleId,
+            unverifiedRoleId = unverifiedRoleId,
+            nicknameFormat = nicknameFormat,
+            minAccountAgeDays = minAccountAgeDays,
+            // Copia PROFUNDA: o snapshot e lido fora do lock, e uma lista
+            // compartilhada com o mutador poderia ser vista pela metade.
+            groupBinds = (groupBinds ?? new()).Select(b => b.Copy()).ToList(),
             updatedAtUtc = updatedAtUtc,
             updatedById = updatedById
+        };
+    }
+
+    /// <summary>
+    /// Regra "quem esta no grupo X com rank entre A e B ganha o cargo Y".
+    ///
+    /// Rank 0 e "fora do grupo", como o proprio Roblox conta. Um bind com
+    /// minRank 0 casa tambem com quem nao esta no grupo.
+    /// </summary>
+    internal sealed class GroupBind
+    {
+        public string id { get; set; } = string.Empty;
+        public long groupId { get; set; }
+        public string groupName { get; set; } = string.Empty;
+        public int minRank { get; set; }
+        public int maxRank { get; set; }
+        public ulong roleId { get; set; }
+        public ulong createdById { get; set; }
+        public DateTimeOffset createdAtUtc { get; set; }
+
+        public bool Matches(int rank) => rank >= minRank && rank <= maxRank;
+
+        public GroupBind Copy() => new()
+        {
+            id = id,
+            groupId = groupId,
+            groupName = groupName,
+            minRank = minRank,
+            maxRank = maxRank,
+            roleId = roleId,
+            createdById = createdById,
+            createdAtUtc = createdAtUtc
         };
     }
 

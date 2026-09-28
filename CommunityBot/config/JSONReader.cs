@@ -14,6 +14,9 @@ namespace CommunityBot.config
     {
         public string? token { get; private set; }
         public ulong[]? guildIds { get; private set; }
+
+        /// <summary>Nunca nulo: sem a secao no arquivo, valem os padroes, que deixam o /verify desligado.</summary>
+        public RobloxVerifySettings robloxVerify { get; private set; } = new();
         // LEGADO. Estas seis chaves saíram do arquivo e viraram configuracao por
         // servidor, escrita pelo /config. Continuam sendo lidas para a migracao
         // unica do LegacyConfigMigration, e nada mais as consulta.
@@ -53,6 +56,7 @@ namespace CommunityBot.config
 
             token = data?.token;
             guildIds = data?.guildIds;
+            robloxVerify = data?.robloxVerify ?? new RobloxVerifySettings();
             moderationLogChannelId = data?.moderationLogChannelId;
             autoSoftbanGuildId = data?.autoSoftbanGuildId;
             autoSoftbanChannelId = data?.autoSoftbanChannelId;
@@ -122,6 +126,9 @@ namespace CommunityBot.config
         /// <summary>Vazio ou ausente registra os comandos globalmente.</summary>
         public ulong[]? guildIds { get; set; }
 
+        /// <summary>Ligacao com o Worker de verificacao Roblox. Ver RobloxVerifySettings.</summary>
+        public RobloxVerifySettings? robloxVerify { get; set; }
+
         /// <summary>
         /// LEGADO, so para a migracao. Ver LegacyConfigMigration: estas seis
         /// chaves viraram configuracao por servidor e hoje se definem pelo
@@ -162,5 +169,30 @@ namespace CommunityBot.config
         /// trancar o canal em vez de apagar.
         /// </summary>
         public ulong? ticketLogChannelId { get; set; }
+    }
+
+    /// <summary>
+    /// Onde fica o Worker de verificacao Roblox e o segredo que o bot usa para
+    /// buscar resultados nele.
+    ///
+    /// O segredo mora aqui, e nao por servidor, porque e da INSTALACAO: e o
+    /// mesmo valor do BOT_API_SECRET do Worker, e quem o tem pode ler o
+    /// resultado pendente de qualquer pessoa. Por isso fica neste arquivo, que
+    /// ja esta no .gitignore por causa do token.
+    /// </summary>
+    internal sealed class RobloxVerifySettings
+    {
+        /// <summary>Pagina que a pessoa abre. Estatica: nao carrega identidade nenhuma.</summary>
+        public string startUrl { get; set; } = "https://daeese.me/oauth/roblox/start";
+
+        /// <summary>Endpoint que o bot consulta, com o segredo no Authorization.</summary>
+        public string resultUrl { get; set; } = "https://daeese.me/oauth/roblox/result";
+
+        public string? apiSecret { get; set; }
+
+        public bool IsConfigured =>
+            !string.IsNullOrWhiteSpace(apiSecret) &&
+            Uri.TryCreate(startUrl, UriKind.Absolute, out var start) && start.Scheme == Uri.UriSchemeHttps &&
+            Uri.TryCreate(resultUrl, UriKind.Absolute, out var result) && result.Scheme == Uri.UriSchemeHttps;
     }
 }
