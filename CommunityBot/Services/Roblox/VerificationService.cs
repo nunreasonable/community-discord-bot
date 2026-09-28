@@ -9,7 +9,7 @@ using DisCatSharp.EventArgs;
 
 namespace CommunityBot.Services.Roblox
 {
-    /// <summary>Formatos de apelido que o /config verificacao-apelido oferece.</summary>
+    /// <summary>Formatos de apelido que o /config verify-nickname oferece.</summary>
     internal static class NicknameFormats
     {
         public const string None = "nenhum";
@@ -44,10 +44,10 @@ namespace CommunityBot.Services.Roblox
 
         public static string Describe(string? format) => format switch
         {
-            Username => "nome de usuário do Roblox",
-            Display => "nome de exibição do Roblox",
-            Smart => "exibição (@usuário)",
-            _ => "não mexer no apelido"
+            Username => "Roblox username",
+            Display => "Roblox display name",
+            Smart => "display name (@username)",
+            _ => "don't change the nickname"
         };
     }
 
@@ -70,7 +70,7 @@ namespace CommunityBot.Services.Roblox
                 .Concat(Warnings.Select(w => $"⚠️ {w}"))
                 .ToList();
 
-            return lines.Count == 0 ? "Nada a mudar: já estava tudo certo." : Embeds.Trim(string.Join("\n", lines), 1024);
+            return lines.Count == 0 ? "Nothing to change: everything was already in place." : Embeds.Trim(string.Join("\n", lines), 1024);
         }
     }
 
@@ -112,8 +112,8 @@ namespace CommunityBot.Services.Roblox
             {
                 // Sem saber onde o bot esta na hierarquia, nao da para prever
                 // nada. Falha fechada, como no Hierarchy.Check.
-                report.Warnings.Add("não consegui ler o meu próprio cargo neste servidor, então não mexi em nada. " +
-                                    "Tente de novo em alguns segundos.");
+                report.Warnings.Add("I couldn't read my own role in this server, so I didn't change anything. " +
+                                    "Try again in a few seconds.");
                 return report;
             }
 
@@ -123,13 +123,13 @@ namespace CommunityBot.Services.Roblox
                 if (link.robloxCreatedUtc is not { } created)
                 {
                     eligible = false;
-                    report.Refusal = "não consegui confirmar a idade da conta Roblox, e este servidor exige uma idade mínima.";
+                    report.Refusal = "I couldn't confirm the Roblox account's age, and this server requires a minimum age.";
                 }
                 else if (DateTimeOffset.UtcNow - created < TimeSpan.FromDays(settings.minAccountAgeDays))
                 {
                     eligible = false;
                     var days = Math.Max(0, (int)(DateTimeOffset.UtcNow - created).TotalDays);
-                    report.Refusal = $"a conta Roblox tem {days} dia(s), e este servidor exige pelo menos " +
+                    report.Refusal = $"the Roblox account is {days} day(s) old, and this server requires at least " +
                                      $"{settings.minAccountAgeDays}.";
                 }
             }
@@ -204,24 +204,24 @@ namespace CommunityBot.Services.Roblox
             // O id do @everyone e o id do servidor, sempre - nao depende do cache
             // de cargos estar quente, como o guild.EveryoneRole depende.
             if (role.Id == guild.Id)
-                return Embeds.Error("Cargo inválido", "O @everyone todo mundo já tem.");
+                return Embeds.Error("Invalid role", "Everyone already has @everyone.");
 
             if (role.IsManaged)
-                return Embeds.Error("Cargo inválido",
-                    $"{role.Mention} é gerenciado por uma integração (bot ou boost) e ninguém consegue dá-lo à mão.");
+                return Embeds.Error("Invalid role",
+                    $"{role.Mention} is managed by an integration (a bot or boosts), so no one can assign it manually.");
 
             if (guild.CurrentMember is not { } bot)
-                return Embeds.Error("Hierarquia indisponível",
-                    "Não consegui ler o meu próprio cargo agora. Tente de novo em alguns segundos.");
+                return Embeds.Error("Role hierarchy unavailable",
+                    "I couldn't read my own role right now. Try again in a few seconds.");
 
             if (role.Position >= TopPosition(bot))
-                return Embeds.Error("Cargo acima do meu",
-                    $"{role.Mention} está no mesmo nível ou acima do meu cargo mais alto, então eu não conseguiria dá-lo. " +
-                    "Suba o meu cargo na lista de cargos do servidor.");
+                return Embeds.Error("Role above mine",
+                    $"{role.Mention} is at or above my highest role, so I wouldn't be able to assign it. " +
+                    "Move my role higher in the server's role list.");
 
             if (guild.OwnerId != actor.Id && role.Position >= TopPosition(actor))
-                return Embeds.Error("Cargo acima do seu",
-                    $"{role.Mention} está no mesmo nível ou acima do seu cargo mais alto. Você não pode mandar eu distribuí-lo.");
+                return Embeds.Error("Role above yours",
+                    $"{role.Mention} is at or above your highest role. You can't have me hand it out.");
 
             return null;
         }
@@ -245,8 +245,8 @@ namespace CommunityBot.Services.Roblox
                 {
                     var report = await ApplyAsync(client, guild, member, link,
                         AuditReason.Automatic(link is null
-                            ? "Verificação Roblox: entrou sem conta vinculada"
-                            : $"Verificação Roblox: entrou já vinculado a {link.robloxName} ({link.robloxId})"));
+                            ? "Roblox verification: joined without a linked account"
+                            : $"Roblox verification: joined already linked to {link.robloxName} ({link.robloxId})"));
 
                     if (report.Warnings.Count > 0)
                         Console.WriteLine($"[verificacao] aviso: entrada de {member.Id} em {guild.Id}: " +
@@ -267,8 +267,8 @@ namespace CommunityBot.Services.Roblox
             var groups = await RobloxApi.GetGroupRolesAsync(link.robloxId, fresh);
             if (!groups.Ok)
             {
-                report.Warnings.Add($"não consegui ler os grupos no Roblox ({groups.Error ?? "conta não encontrada"}), " +
-                                    "então os cargos de grupo ficaram como estavam.");
+                report.Warnings.Add($"I couldn't read the Roblox groups ({groups.Error ?? "account not found"}), " +
+                                    "so group roles were left as they were.");
                 return;
             }
 
@@ -296,14 +296,14 @@ namespace CommunityBot.Services.Roblox
             // Cargo configurado que sumiu do servidor: vale avisar mesmo sem ter
             // o que mudar nele, senao o /config fica apontando para o nada.
             foreach (var missing in add.Where(id => guild.GetRole(id) is null))
-                report.Warnings.Add($"o cargo `{missing}` configurado não existe mais neste servidor.");
+                report.Warnings.Add($"The configured role `{missing}` no longer exists in this server.");
 
             if (toAdd.Count + toRemove.Count == 0)
                 return;
 
             if (!Has(bot, Permissions.ManageRoles))
             {
-                report.Warnings.Add("me falta **Gerenciar Cargos**, então não mexi em cargo nenhum.");
+                report.Warnings.Add("I'm missing **Manage Roles**, so I didn't change any roles.");
                 return;
             }
 
@@ -316,8 +316,8 @@ namespace CommunityBot.Services.Roblox
 
                 if (role.IsManaged || role.Position >= botTop)
                 {
-                    report.Warnings.Add($"{role.Mention} está acima do meu cargo mais alto, então não consegui " +
-                                        (grant ? "dá-lo." : "tirá-lo."));
+                    report.Warnings.Add($"{role.Mention} is above my highest role, so I couldn't " +
+                                        (grant ? "give it." : "remove it."));
                     continue;
                 }
 
@@ -328,12 +328,12 @@ namespace CommunityBot.Services.Roblox
                     else
                         await member.RevokeRoleAsync(role, reason);
 
-                    report.Done.Add(grant ? $"cargo {role.Mention} dado" : $"cargo {role.Mention} retirado");
+                    report.Done.Add(grant ? $"Role {role.Mention} added" : $"Role {role.Mention} removed");
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[verificacao] aviso: {(grant ? "dar" : "tirar")} {role.Id} de {member.Id} em {guild.Id}: {ex.Message}");
-                    report.Warnings.Add($"o Discord recusou {(grant ? "dar" : "tirar")} {role.Mention}.");
+                    report.Warnings.Add($"Discord refused to {(grant ? "give" : "remove")} {role.Mention}.");
                 }
             }
         }
@@ -348,19 +348,19 @@ namespace CommunityBot.Services.Roblox
             // motivo em vez de repassar um 403 cru.
             if (guild.OwnerId == member.Id)
             {
-                report.Warnings.Add("o Discord não deixa bot nenhum mudar o apelido do dono do servidor.");
+                report.Warnings.Add("Discord doesn't let any bot change the server owner's nickname.");
                 return;
             }
 
             if (!Has(bot, Permissions.ManageNicknames))
             {
-                report.Warnings.Add("me falta **Gerenciar Apelidos**, então o apelido ficou como estava.");
+                report.Warnings.Add("I'm missing **Manage Nicknames**, so the nickname was left as it was.");
                 return;
             }
 
             if (TopPosition(member) >= TopPosition(bot))
             {
-                report.Warnings.Add("o cargo mais alto da pessoa está no nível do meu ou acima, então não consigo mudar o apelido dela.");
+                report.Warnings.Add("This member's highest role is at or above mine, so I can't change their nickname.");
                 return;
             }
 
@@ -376,13 +376,13 @@ namespace CommunityBot.Services.Roblox
                 });
 
                 report.Done.Add(nickname is null
-                    ? "apelido de volta ao nome do Discord"
-                    : $"apelido trocado para **{Embeds.Safe(nickname)}**");
+                    ? "Nickname reset to their Discord name"
+                    : $"Nickname changed to **{Embeds.Safe(nickname)}**");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[verificacao] aviso: apelido de {member.Id} em {guild.Id}: {ex.Message}");
-                report.Warnings.Add("o Discord recusou a troca de apelido.");
+                report.Warnings.Add("Discord refused the nickname change.");
             }
         }
 

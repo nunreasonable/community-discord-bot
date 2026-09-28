@@ -23,19 +23,19 @@ namespace CommunityBot.commands
     [ApplicationCommandRequireGuild]
     internal class Verification : ApplicationCommandsModule
     {
-        [SlashCommand("verify", "Vincula a sua conta Roblox pelo login oficial do Roblox")]
+        [SlashCommand("verify", "Links your Roblox account through the official Roblox login")]
         [SlashCommandCooldown(3, 60, CooldownBucketType.User)]
         public Task VerifyCommand(InteractionContext ctx) =>
             VerificationFlow.BeginAsync(ctx.Client, ctx.Interaction, ctx.Guild!, ctx.Member!);
 
-        [SlashCommand("unverify", "Desfaz o vínculo da sua conta Roblox, em todos os servidores")]
+        [SlashCommand("unverify", "Unlinks your Roblox account, across all servers")]
         public async Task UnverifyCommand(InteractionContext ctx)
         {
             if (RobloxLinkStore.For(ctx.User.Id) is not { } link)
             {
                 await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
-                    new DiscordInteractionResponseBuilder().AsEphemeral().AddEmbed(Embeds.Info("Nada a desfazer",
-                        "Sua conta do Discord não está vinculada a nenhuma conta Roblox.")));
+                    new DiscordInteractionResponseBuilder().AsEphemeral().AddEmbed(Embeds.Info("Nothing to undo",
+                        "Your Discord account isn't linked to any Roblox account.")));
                 return;
             }
 
@@ -45,21 +45,21 @@ namespace CommunityBot.commands
                 new DiscordInteractionResponseBuilder()
                     .AsEphemeral()
                     .AddEmbed(new DiscordEmbedBuilder()
-                        .WithTitle("Desvincular a conta Roblox?")
+                        .WithTitle("Unlink your Roblox account?")
                         .WithColor(DiscordColor.Blurple)
                         .WithDescription(
-                            $"Hoje você está vinculado a {VerificationFlow.Describe(link)}.\n\n" +
-                            "Desvincular vale para **todos os servidores** que usam o Sollarety. Aqui os cargos de " +
-                            "verificação saem na hora; nos outros, no próximo `/update`. Para voltar, é só `/verify`.")
+                            $"You're currently linked to {VerificationFlow.Describe(link)}.\n\n" +
+                            "Unlinking applies to **every server** that uses Sollarety. Here, verification roles are " +
+                            "removed right away; in other servers, on the next `/update`. To link again, just run `/verify`.")
                         .Build())
-                    .AddComponents(new DiscordButtonComponent(ButtonStyle.Danger, VerificationFlow.UnlinkId, "Desvincular")));
+                    .AddComponents(new DiscordButtonComponent(ButtonStyle.Danger, VerificationFlow.UnlinkId, "Unlink")));
         }
 
-        [SlashCommand("update", "Relê a conta Roblox e reaplica cargos e apelido")]
+        [SlashCommand("update", "Re-reads the Roblox account and reapplies roles and nickname")]
         [SlashCommandCooldown(5, 60, CooldownBucketType.User)]
         public async Task UpdateCommand(
             InteractionContext ctx,
-            [Option("usuario", "Quem atualizar. Vazio atualiza você; outra pessoa exige Gerenciar Cargos")] DiscordUser? usuario = null)
+            [Option("user", "Who to update. Empty updates you; someone else requires Manage Roles")] DiscordUser? usuario = null)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -72,23 +72,23 @@ namespace CommunityBot.commands
             // permissao de quem mexe em cargo.
             if (!self && (ctx.Member!.Permissions & (Permissions.ManageRoles | Permissions.Administrator)) == 0)
             {
-                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("Sem permissão",
-                    "Atualizar outra pessoa exige **Gerenciar Cargos**. Sem a opção `usuario`, você se atualiza.")));
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("No permission",
+                    "Updating someone else requires **Manage Roles**. Without the `user` option, you update yourself.")));
                 return;
             }
 
             if (target.IsBot)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Alvo inválido", "Bots não têm conta Roblox.")));
+                    Embeds.Error("Invalid target", "Bots don't have Roblox accounts.")));
                 return;
             }
 
             if (!VerificationService.IsConfigured(GuildSettingsStore.For(ctx.Guild!.Id)))
             {
-                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Info("Nada configurado",
-                    "Este servidor ainda não configurou a verificação Roblox, então não há cargo a aplicar. " +
-                    "Quem tem Gerenciar Servidor configura com `/config verificacao-cargo` e `/bind adicionar`.")));
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Info("Nothing configured",
+                    "This server hasn't set up Roblox verification yet, so there are no roles to apply. " +
+                    "Someone with Manage Server can set it up with `/config verify-role` and `/bind add`.")));
                 return;
             }
 
@@ -96,7 +96,7 @@ namespace CommunityBot.commands
             if (member is null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Fora do servidor", $"{target.Mention} não está neste servidor.")));
+                    Embeds.Error("Not in this server", $"{target.Mention} isn't in this server.")));
                 return;
             }
 
@@ -112,28 +112,28 @@ namespace CommunityBot.commands
             }
 
             var report = await VerificationService.ApplyAsync(ctx.Client, ctx.Guild!, member, link,
-                AuditReason.For(ctx.User.UsernameWithDiscriminator, "/update da verificação Roblox"), fresh: true);
+                AuditReason.For(ctx.User.UsernameWithDiscriminator, "Roblox verification /update"), fresh: true);
 
             var embed = new DiscordEmbedBuilder()
-                .WithTitle(self ? "Você foi atualizado" : "Membro atualizado")
+                .WithTitle(self ? "You've been updated" : "Member updated")
                 .WithColor(DiscordColor.SpringGreen)
                 .WithDescription(link is null
-                    ? $"{target.Mention} não tem conta Roblox vinculada." + (self ? " Use `/verify` para vincular." : string.Empty)
+                    ? $"{target.Mention} has no linked Roblox account." + (self ? " Use `/verify` to link one." : string.Empty)
                     : $"{target.Mention} → {VerificationFlow.Describe(link)}");
 
             if (report.Refusal is not null)
-                embed.AddField(new DiscordEmbedField("Não liberado neste servidor",
-                    Embeds.Trim("A conta está vinculada, mas " + report.Refusal, 1024), false));
+                embed.AddField(new DiscordEmbedField("Not approved in this server",
+                    Embeds.Trim("The account is linked, but " + report.Refusal, 1024), false));
 
-            embed.AddField(new DiscordEmbedField("Mudanças", report.Describe(), false));
+            embed.AddField(new DiscordEmbedField("Changes", report.Describe(), false));
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("whois", "Mostra a conta Roblox vinculada a alguém")]
+        [SlashCommand("whois", "Shows the Roblox account linked to someone")]
         public async Task WhoisCommand(
             InteractionContext ctx,
-            [Option("usuario", "Quem consultar")] DiscordUser usuario)
+            [Option("user", "Who to look up")] DiscordUser usuario)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -145,7 +145,7 @@ namespace CommunityBot.commands
             if (await Hierarchy.TryGetMemberAsync(ctx, usuario.Id) is null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Fora do servidor", $"{usuario.Mention} não está neste servidor.")));
+                    Embeds.Error("Not in this server", $"{usuario.Mention} isn't in this server.")));
                 return;
             }
 
@@ -153,19 +153,19 @@ namespace CommunityBot.commands
 
             if (RobloxLinkStore.For(usuario.Id) is not { } link)
             {
-                embed = Embeds.Info("Sem vínculo", $"{usuario.Mention} não tem conta Roblox vinculada.");
+                embed = Embeds.Info("Not linked", $"{usuario.Mention} has no linked Roblox account.");
             }
             else
             {
                 var builder = new DiscordEmbedBuilder()
-                    .WithTitle("Conta Roblox vinculada")
+                    .WithTitle("Linked Roblox account")
                     .WithColor(DiscordColor.Blurple)
                     .WithDescription($"{usuario.Mention} → {VerificationFlow.Describe(link)}")
-                    .AddField(new DiscordEmbedField("ID Roblox", $"`{link.robloxId}`", true))
-                    .AddField(new DiscordEmbedField("Vinculada em", $"<t:{link.verifiedAtUtc.ToUnixTimeSeconds()}:D>", true));
+                    .AddField(new DiscordEmbedField("Roblox ID", $"`{link.robloxId}`", true))
+                    .AddField(new DiscordEmbedField("Linked on", $"<t:{link.verifiedAtUtc.ToUnixTimeSeconds()}:D>", true));
 
                 if (link.robloxCreatedUtc is { } created)
-                    builder.AddField(new DiscordEmbedField("Conta criada em", $"<t:{created.ToUnixTimeSeconds()}:D>", true));
+                    builder.AddField(new DiscordEmbedField("Account created on", $"<t:{created.ToUnixTimeSeconds()}:D>", true));
 
                 embed = builder.Build();
             }
@@ -173,30 +173,30 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("verify-painel", "Publica neste canal o painel com o botão de verificação",
+        [SlashCommand("verify-panel", "Posts the panel with the verification button in this channel",
             (long)Permissions.ManageGuild)]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageGuild)]
         [ApplicationCommandRequireBotPermissions(Permissions.SendMessages)]
         public async Task PanelCommand(
             InteractionContext ctx,
-            [Option("titulo", "Título do painel")] string? titulo = null,
-            [Option("texto", "Texto explicativo do painel")] string? texto = null)
+            [Option("title", "Panel title")] string? titulo = null,
+            [Option("text", "Panel description text")] string? texto = null)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
 
             var embed = new DiscordEmbedBuilder()
-                .WithTitle(Embeds.SafeTrim(titulo ?? "Verifique sua conta Roblox", 200))
+                .WithTitle(Embeds.SafeTrim(titulo ?? "Verify your Roblox account", 200))
                 .WithDescription(Embeds.SafeTrim(texto ??
-                    "Clique no botão abaixo para vincular sua conta Roblox pelo login oficial do Roblox. " +
-                    "Quem já verificou em outro servidor com o Sollarety recebe os cargos na hora.", 2000))
+                    "Click the button below to link your Roblox account through the official Roblox login. " +
+                    "If you've already verified in another server with Sollarety, you get your roles right away.", 2000))
                 .WithColor(DiscordColor.Blurple);
 
             // O botao nao carrega nada alem da acao: quem clicou e o que importa,
             // e isso vem do proprio clique. O painel sobrevive a reinicios.
             var message = new DiscordMessageBuilder()
                 .AddEmbed(embed)
-                .AddComponents(new DiscordButtonComponent(ButtonStyle.Success, VerificationFlow.StartId, "Verificar",
+                .AddComponents(new DiscordButtonComponent(ButtonStyle.Success, VerificationFlow.StartId, "Verify",
                     emoji: new DiscordComponentEmoji("✅")));
 
             try
@@ -206,17 +206,17 @@ namespace CommunityBot.commands
             catch (Exception ex)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Falha ao publicar o painel", Embeds.Trim(ex.Message, 500))));
+                    Embeds.Error("Failed to post the panel", Embeds.Trim(ex.Message, 500))));
                 return;
             }
 
             var note = VerificationService.IsConfigured(GuildSettingsStore.For(ctx.Guild!.Id))
                 ? string.Empty
-                : "\n\n⚠️ Este servidor ainda não configurou **nenhum cargo** de verificação: o botão vincula a conta, " +
-                  "mas não dá nada. Veja `/config verificacao-cargo` e `/bind adicionar`.";
+                : "\n\n⚠️ This server hasn't set up **any** verification role yet: the button links the account, " +
+                  "but grants nothing. See `/config verify-role` and `/bind add`.";
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                Embeds.Ok("Painel publicado", $"O painel está de pé em {ctx.Channel.Mention}.{note}")));
+                Embeds.Ok("Panel posted", $"The panel is up in {ctx.Channel.Mention}.{note}")));
         }
     }
 }

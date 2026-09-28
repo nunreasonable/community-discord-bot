@@ -33,7 +33,7 @@ namespace CommunityBot.Services.Roblox
         public static async Task<TakeResult> TakeAsync(RobloxVerifySettings settings, ulong discordId, CancellationToken ct = default)
         {
             if (!settings.IsConfigured)
-                return new TakeResult(TakeStatus.Failed, null, "verificação não configurada");
+                return new TakeResult(TakeStatus.Failed, null, "verification is not configured");
 
             var url = $"{settings.resultUrl}?d={discordId.ToString(CultureInfo.InvariantCulture)}";
 
@@ -53,11 +53,11 @@ namespace CommunityBot.Services.Roblox
                     // batem. Vai para o log como erro para aparecer no /logs.
                     Console.WriteLine("[roblox] erro: o Worker recusou o apiSecret (401). " +
                                       "Confira robloxVerify.apiSecret contra o BOT_API_SECRET do Worker.");
-                    return new TakeResult(TakeStatus.Failed, null, "o servidor de verificação recusou a credencial do bot");
+                    return new TakeResult(TakeStatus.Failed, null, "the verification server rejected the bot's credentials");
                 }
 
                 if (!response.IsSuccessStatusCode)
-                    return new TakeResult(TakeStatus.Failed, null, $"o servidor de verificação respondeu {(int)response.StatusCode}");
+                    return new TakeResult(TakeStatus.Failed, null, $"the verification server responded with {(int)response.StatusCode}");
 
                 var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
                 using var reader = new JsonTextReader(new StringReader(body)) { DateParseHandling = DateParseHandling.None };
@@ -69,13 +69,13 @@ namespace CommunityBot.Services.Roblox
                     !long.TryParse(json.Value<string>("robloxId"), NumberStyles.None, CultureInfo.InvariantCulture, out var robloxId) ||
                     robloxId <= 0)
                 {
-                    return new TakeResult(TakeStatus.Failed, null, "o servidor de verificação devolveu uma resposta inválida");
+                    return new TakeResult(TakeStatus.Failed, null, "the verification server returned an invalid response");
                 }
 
                 // O Worker indexa pelo id pedido, entao isto so falharia com um
                 // Worker quebrado. Custa uma comparacao e fecha a porta de vez.
                 if (returnedId != discordId)
-                    return new TakeResult(TakeStatus.Failed, null, "o resultado da verificação era de outra conta do Discord");
+                    return new TakeResult(TakeStatus.Failed, null, "the verification result belonged to a different Discord account");
 
                 DateTimeOffset? created = json.Value<long?>("createdAt") is { } unix and > 0
                     ? DateTimeOffset.FromUnixTimeSeconds(unix)
@@ -90,12 +90,12 @@ namespace CommunityBot.Services.Roblox
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                return new TakeResult(TakeStatus.Failed, null, "o servidor de verificação demorou demais");
+                return new TakeResult(TakeStatus.Failed, null, "the verification server took too long to respond");
             }
             catch (Exception ex) when (ex is HttpRequestException or JsonException)
             {
                 Console.WriteLine($"[roblox] aviso: falha ao consultar o Worker: {ex.Message}");
-                return new TakeResult(TakeStatus.Failed, null, "não consegui falar com o servidor de verificação");
+                return new TakeResult(TakeStatus.Failed, null, "I couldn't reach the verification server");
             }
         }
     }

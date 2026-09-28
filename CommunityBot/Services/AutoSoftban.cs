@@ -346,16 +346,16 @@ namespace CommunityBot.Services
 
                 case Softban.SoftbanOutcome.UnbanFailed:
                     Console.WriteLine($"[autosoftban] erro: {author.Id} banido, mas o unban falhou: {result.Error}");
-                    await ModerationLog.RecordAsync(client, guild.Id, "Softban automático", author, client.CurrentUser,
-                        $"Mensagem no canal vigiado {channel.Mention}",
-                        "⚠️ O desbanimento falhou — o usuário continua BANIDO e precisa ser desbanido à mão.");
+                    await ModerationLog.RecordAsync(client, guild.Id, "Auto-softban", author, client.CurrentUser,
+                        $"Message in the watched channel {channel.Mention}",
+                        "⚠️ The unban failed — the user is still BANNED and must be unbanned manually.");
                     return;
 
                 default:
                     Console.WriteLine($"[autosoftban] {author.Id} levou softban por escrever em {channel.Id}");
-                    await ModerationLog.RecordAsync(client, guild.Id, "Softban automático", author, client.CurrentUser,
-                        $"Mensagem no canal vigiado {channel.Mention}",
-                        "Mensagens dos últimos 7 dias apagadas. O usuário pode voltar por convite.");
+                    await ModerationLog.RecordAsync(client, guild.Id, "Auto-softban", author, client.CurrentUser,
+                        $"Message in the watched channel {channel.Mention}",
+                        "Deleted messages from the last 7 days. The user can rejoin with an invite.");
                     return;
             }
         }
@@ -370,7 +370,7 @@ namespace CommunityBot.Services
             // caracteres de controle enquanto a de la os TROCA POR ESPACO, e a
             // classe de la existe justamente com um comentario dizendo que essa
             // limpeza nao pode existir em copias.
-            Services.AuditReason.Automatic($"auto-softban: escreveu no canal vigiado #{channel.Name}");
+            Services.AuditReason.Automatic($"auto-softban: posted in the watched channel #{channel.Name}");
 
         /// <summary>
         /// Reserva uma vaga no disjuntor. Devolve false quando o vigia nao pode
@@ -446,19 +446,19 @@ namespace CommunityBot.Services
         {
             // "disjuntor" e palavra reconhecida pelo BotLogBuffer.Classify como
             // ERRO. Sem isso esta linha - a mais importante que o vigia produz -
-            // seria arquivada como INFO e sumiria de `/logs nivel:erro`.
+            // seria arquivada como INFO e sumiria de `/logs level:erro`.
             Console.WriteLine($"[autosoftban] DISJUNTOR disparado: {BreakerLimit} softbans em menos de " +
                               $"{BreakerWindow.TotalSeconds:0}s no canal {channel.Id}. " +
                               "Vigia desarmado ate o bot reiniciar.");
 
             lock (s_breakerLock) BreakerFor(guild.Id).LastNoticeTicks = DateTimeOffset.UtcNow.Ticks;
 
-            await ModerationLog.AlertAsync(client, guild.Id, "Vigia de canal desarmado",
-                $"O softban automático chegou a {BreakerLimit} punições em menos de " +
-                $"{BreakerWindow.TotalSeconds:0} segundos em {channel.Mention} e **se desarmou**.\n\n" +
-                "Isso costuma significar um raid, um `autoSoftbanChannelId` apontando para o canal errado, " +
-                "ou o bot sem permissão de banir. Confira antes de religar.\n\n" +
-                "O vigia só volta quando o bot reiniciar. O `/softban` manual continua funcionando.");
+            await ModerationLog.AlertAsync(client, guild.Id, "Channel watcher disarmed",
+                $"The auto-softban reached {BreakerLimit} softbans in under " +
+                $"{BreakerWindow.TotalSeconds:0} seconds in {channel.Mention} and **disarmed itself**.\n\n" +
+                "This usually means a raid, an `autoSoftbanChannelId` pointing at the wrong channel, " +
+                "or the bot missing the Ban Members permission. Check before re-arming it.\n\n" +
+                "The watcher only comes back when the bot restarts. The manual `/softban` still works.");
         }
 
         /// <summary>
@@ -587,7 +587,7 @@ namespace CommunityBot.Services
 
             // O disjuntor grita no canal de log de moderacao DESTE servidor.
             if (GuildSettingsStore.For(guild.Id)?.moderationLogChannelId is not > 0)
-                problems.Add("nao ha canal de log de moderacao (/config log-moderacao), entao o aviso de " +
+                problems.Add("nao ha canal de log de moderacao (/config mod-log), entao o aviso de " +
                              "disjuntor desarmado nao chega a canal nenhum");
 
             var extra = notes.Count > 0 ? $" ({string.Join("; ", notes)})" : string.Empty;

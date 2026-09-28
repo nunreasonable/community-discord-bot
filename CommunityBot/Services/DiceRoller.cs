@@ -29,14 +29,14 @@ namespace CommunityBot.Services
             var text = (input ?? string.Empty).Trim().ToLowerInvariant().Replace(" ", string.Empty);
             if (text.Length == 0)
             {
-                error = "Informe os dados, por exemplo `2d6` ou `d20`.";
+                error = "Enter the dice to roll, for example `2d6` or `d20`.";
                 return false;
             }
 
             var separator = text.IndexOf('d');
             if (separator < 0)
             {
-                error = "Formato inválido. Use `NdM`, por exemplo `2d6`.";
+                error = "Invalid format. Use `NdM`, for example `2d6`.";
                 return false;
             }
 
@@ -48,25 +48,25 @@ namespace CommunityBot.Services
             if (countText.Length > 0 &&
                 !int.TryParse(countText, NumberStyles.None, CultureInfo.InvariantCulture, out count))
             {
-                error = "Quantidade de dados inválida.";
+                error = "Invalid number of dice.";
                 return false;
             }
 
             if (!int.TryParse(sidesText, NumberStyles.None, CultureInfo.InvariantCulture, out var sides))
             {
-                error = "Número de lados inválido.";
+                error = "Invalid number of sides.";
                 return false;
             }
 
             if (count < 1 || count > MaxDice)
             {
-                error = $"A quantidade de dados precisa ficar entre 1 e {MaxDice}.";
+                error = $"The number of dice must be between 1 and {MaxDice}.";
                 return false;
             }
 
             if (sides < 2 || sides > MaxSides)
             {
-                error = $"O número de lados precisa ficar entre 2 e {MaxSides}.";
+                error = $"The number of sides must be between 2 and {MaxSides}.";
                 return false;
             }
 

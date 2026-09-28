@@ -121,7 +121,7 @@ namespace CommunityBot.Services.Roblox
             if (json is null)
                 return Lookup<RobloxGroup>.Missing();
 
-            return Lookup<RobloxGroup>.Found(new RobloxGroup(groupId, json.Value<string>("name") ?? $"grupo {groupId}"));
+            return Lookup<RobloxGroup>.Found(new RobloxGroup(groupId, json.Value<string>("name") ?? $"group {groupId}"));
         }
 
         /// <summary>Esquece o que se sabe de um usuario. Chamado no /update.</summary>
@@ -163,7 +163,7 @@ namespace CommunityBot.Services.Roblox
                     if (!response.IsSuccessStatusCode)
                     {
                         Console.WriteLine($"[roblox] aviso: {url} respondeu {(int)response.StatusCode}");
-                        return (response.StatusCode, null, $"o Roblox respondeu {(int)response.StatusCode}");
+                        return (response.StatusCode, null, $"Roblox responded with {(int)response.StatusCode}");
                     }
 
                     var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -177,12 +177,12 @@ namespace CommunityBot.Services.Roblox
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
                     Console.WriteLine($"[roblox] aviso: {url} demorou demais");
-                    return (0, null, "o Roblox demorou demais para responder");
+                    return (0, null, "Roblox took too long to respond");
                 }
                 catch (Exception ex) when (ex is HttpRequestException or JsonException)
                 {
                     Console.WriteLine($"[roblox] aviso: {url} falhou: {ex.Message}");
-                    return (0, null, "não consegui falar com o Roblox");
+                    return (0, null, "Roblox couldn't be reached");
                 }
             }
         }

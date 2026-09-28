@@ -24,17 +24,17 @@ namespace CommunityBot.commands
     [ApplicationCommandRequireGuild]
     internal class Tickets : ApplicationCommandsModule
     {
-        [SlashCommand("ticket", "Abre um ticket com a equipe")]
+        [SlashCommand("ticket", "Open a ticket with the staff")]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageChannels | Permissions.ManageRoles)]
         [SlashCommandCooldown(2, 60, CooldownBucketType.User)]
         public async Task TicketCommand(
             InteractionContext ctx,
-            [Option("assunto", "Em poucas palavras, do que se trata")] string assunto,
+            [Option("subject", "In a few words, what this is about")] string assunto,
             // As escolhas vem do TicketTypeChoiceProvider, e nao de [Choice]
             // escrito a mao: era a segunda copia da lista de tipos.
             [ChoiceProvider(typeof(TicketTypeChoiceProvider))]
-            [Option("tipo", "Que tipo de ticket é este")] string tipo = "duvida",
-            [Option("detalhes", "Conte o que aconteceu")] string? detalhes = null)
+            [Option("type", "What kind of ticket this is")] string tipo = "duvida",
+            [Option("details", "Tell us what happened")] string? detalhes = null)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -50,17 +50,17 @@ namespace CommunityBot.commands
                 ctx.Client, ctx.Guild!, ctx.Member!, settings, tipo, assunto, detalhes);
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                error ?? Embeds.Ok("Ticket aberto", $"Continue em {channel!.Mention}.")));
+                error ?? Embeds.Ok("Ticket opened", $"Continue in {channel!.Mention}.")));
         }
 
-        [SlashCommand("ticket-painel", "Publica o painel de abertura de tickets neste canal",
+        [SlashCommand("ticket-panel", "Post the ticket panel in this channel",
             (long)Permissions.ManageGuild)]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageGuild)]
         [ApplicationCommandRequireBotPermissions(Permissions.SendMessages)]
         public async Task PanelCommand(
             InteractionContext ctx,
-            [Option("titulo", "Título do painel")] string? titulo = null,
-            [Option("texto", "Texto explicativo do painel")] string? texto = null)
+            [Option("title", "Panel title")] string? titulo = null,
+            [Option("text", "Panel description text")] string? texto = null)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -73,9 +73,9 @@ namespace CommunityBot.commands
             }
 
             var embed = new DiscordEmbedBuilder()
-                .WithTitle(Embeds.SafeTrim(titulo ?? "Precisa falar com a equipe?", 200))
+                .WithTitle(Embeds.SafeTrim(titulo ?? "Need to talk to the staff?", 200))
                 .WithDescription(Embeds.SafeTrim(texto ??
-                    "Escolha abaixo o tipo do seu atendimento. Um canal privado será criado só para você e a equipe.", 2000))
+                    "Pick the kind of help you need below. A private channel will be created just for you and the staff.", 2000))
                 .WithColor(DiscordColor.Blurple);
 
             // Um botao por tipo. Os custom ids nao carregam nada alem do tipo, e e
@@ -105,19 +105,19 @@ namespace CommunityBot.commands
             catch (Exception ex)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Falha ao publicar o painel", Embeds.Trim(ex.Message, 500))));
+                    Embeds.Error("Couldn't post the panel", Embeds.Trim(ex.Message, 500))));
                 return;
             }
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                Embeds.Ok("Painel publicado", $"O painel está de pé em {ctx.Channel.Mention}.")));
+                Embeds.Ok("Panel posted", $"The panel is live in {ctx.Channel.Mention}.")));
         }
 
-        [SlashCommand("ticket-fechar", "Fecha o ticket deste canal")]
+        [SlashCommand("ticket-close", "Close the ticket in this channel")]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageChannels)]
         public async Task CloseCommand(
             InteractionContext ctx,
-            [Option("motivo", "Como isso foi resolvido")] string? motivo = null)
+            [Option("reason", "How it was resolved")] string? motivo = null)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -132,7 +132,7 @@ namespace CommunityBot.commands
             if (ticket!.openerId != ctx.User.Id && !TicketService.IsStaff(ctx.Member!, settings!))
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Sem permissão", "Só quem abriu o ticket ou a equipe pode fechá-lo.")));
+                    Embeds.Error("No permission", "Only the person who opened the ticket or the staff can close it.")));
                 return;
             }
 
@@ -142,7 +142,7 @@ namespace CommunityBot.commands
             if (result.Outcome == CloseOutcome.KeptChannel)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Fechado, mas não arquivado", result.Detail!)));
+                    Embeds.Error("Closed, but not archived", result.Detail!)));
                 return;
             }
 
@@ -151,7 +151,7 @@ namespace CommunityBot.commands
             try
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Ok("Ticket fechado", "A conversa foi arquivada no canal de log.")));
+                    Embeds.Ok("Ticket closed", "The conversation was archived in the log channel.")));
             }
             catch
             {
@@ -159,18 +159,18 @@ namespace CommunityBot.commands
             }
         }
 
-        [SlashCommand("ticket-add", "Adiciona alguém ao ticket deste canal")]
+        [SlashCommand("ticket-add", "Add someone to the ticket in this channel")]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageRoles)]
         public Task AddCommand(
             InteractionContext ctx,
-            [Option("usuario", "Quem entra no ticket")] DiscordUser user) =>
+            [Option("user", "Who to add to the ticket")] DiscordUser user) =>
             SetParticipantAsync(ctx, user, add: true);
 
-        [SlashCommand("ticket-remove", "Remove alguém do ticket deste canal")]
+        [SlashCommand("ticket-remove", "Remove someone from the ticket in this channel")]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageRoles)]
         public Task RemoveCommand(
             InteractionContext ctx,
-            [Option("usuario", "Quem sai do ticket")] DiscordUser user) =>
+            [Option("user", "Who to remove from the ticket")] DiscordUser user) =>
             SetParticipantAsync(ctx, user, add: false);
 
         /// <summary>
@@ -192,15 +192,15 @@ namespace CommunityBot.commands
             if (!TicketService.IsStaff(ctx.Member!, settings!))
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Só para a equipe", "Chamar ou tirar gente do ticket é coisa de quem atende.")));
+                    Embeds.Error("Staff only", "Only staff can add people to or remove them from a ticket.")));
                 return;
             }
 
             if (user.Id == ticket!.openerId && !add)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Alvo inválido",
-                        "Não dá para tirar do ticket quem o abriu. Feche o ticket em vez disso.")));
+                    Embeds.Error("Invalid target",
+                        "You can't remove the person who opened the ticket. Close the ticket instead.")));
                 return;
             }
 
@@ -208,7 +208,7 @@ namespace CommunityBot.commands
             if (member is null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Fora do servidor", $"{user.Mention} não está neste servidor.")));
+                    Embeds.Error("Not in this server", $"{user.Mention} isn't in this server.")));
                 return;
             }
 
@@ -242,18 +242,18 @@ namespace CommunityBot.commands
 
                 await ctx.Channel.AddOverwriteAsync(member, allow, deny,
                     AuditReason.For(ctx.User.UsernameWithDiscriminator,
-                        add ? $"adicionado ao ticket {ticket.id}" : $"removido do ticket {ticket.id}"));
+                        add ? $"added to ticket {ticket.id}" : $"removed from ticket {ticket.id}"));
             }
             catch (Exception ex)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Falha ao alterar o acesso", Embeds.Trim(ex.Message, 500))));
+                    Embeds.Error("Couldn't change access", Embeds.Trim(ex.Message, 500))));
                 return;
             }
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(add
-                ? Embeds.Ok("Adicionado", $"{user.Mention} agora enxerga este ticket.")
-                : Embeds.Ok("Removido", $"{user.Mention} não enxerga mais este ticket.")));
+                ? Embeds.Ok("Added", $"{user.Mention} can now see this ticket.")
+                : Embeds.Ok("Removed", $"{user.Mention} can no longer see this ticket.")));
         }
 
         /// <summary>
@@ -270,12 +270,12 @@ namespace CommunityBot.commands
             var ticket = await TicketStore.Instance.ByChannelAsync(ctx.Channel.Id);
             if (ticket is null)
             {
-                return (settings, null, Embeds.Error("Aqui não é um ticket",
-                    "Use este comando dentro do canal de um ticket."));
+                return (settings, null, Embeds.Error("Not a ticket",
+                    "Use this command inside a ticket channel."));
             }
 
             if (!ticket.IsOpen)
-                return (settings, null, Embeds.Error("Ticket fechado", "Este ticket já foi fechado."));
+                return (settings, null, Embeds.Error("Ticket closed", "This ticket has already been closed."));
 
             return (settings, ticket, null);
         }

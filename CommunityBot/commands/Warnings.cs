@@ -23,12 +23,12 @@ namespace CommunityBot.commands
         /// <summary>Quantas advertências cabem numa página do /warnings.</summary>
         private const int PageSize = 10;
 
-        [SlashCommand("warn", "Registra uma advertência para um usuário", (long)Permissions.ModerateMembers)]
+        [SlashCommand("warn", "Records a warning for a user", (long)Permissions.ModerateMembers)]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         public async Task WarnCommand(
             InteractionContext ctx,
-            [Option("usuario", "Quem será advertido")] DiscordUser user,
-            [Option("motivo", "Motivo da advertência")] string reason)
+            [Option("user", "Who to warn")] DiscordUser user,
+            [Option("reason", "Reason for the warning")] string reason)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -36,7 +36,7 @@ namespace CommunityBot.commands
             if (user.IsBot)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Alvo inválido", "Não faz sentido advertir um bot.")));
+                    Embeds.Error("Invalid target", "There's no point in warning a bot.")));
                 return;
             }
 
@@ -50,7 +50,7 @@ namespace CommunityBot.commands
             if (member is null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Fora do servidor", $"{user.Mention} não está neste servidor.")));
+                    Embeds.Error("Not in this server", $"{user.Mention} is not in this server.")));
                 return;
             }
 
@@ -83,19 +83,19 @@ namespace CommunityBot.commands
             });
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                Embeds.Ok("Advertência registrada",
-                    $"{user.Mention} agora tem **{total}** advertência(s).\nId desta: `{warning.id}`")));
+                Embeds.Ok("Warning recorded",
+                    $"{user.Mention} now has **{total}** warning(s).\nThis warning's ID: `{warning.id}`")));
 
-            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Advertência", user, ctx.User, reason,
-                $"Id `{warning.id}` — total de {total}");
+            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Warning", user, ctx.User, reason,
+                $"ID `{warning.id}` — {total} in total");
         }
 
-        [SlashCommand("warnings", "Lista as advertências de um usuário", (long)Permissions.ModerateMembers)]
+        [SlashCommand("warnings", "Lists a user's warnings", (long)Permissions.ModerateMembers)]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         public async Task WarningsCommand(
             InteractionContext ctx,
-            [Option("usuario", "De quem ver o histórico")] DiscordUser user,
-            [Option("pagina", "Página da lista, começando em 1")] long page = 1)
+            [Option("user", "Whose history to view")] DiscordUser user,
+            [Option("page", "Page of the list, starting at 1")] long page = 1)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -105,7 +105,7 @@ namespace CommunityBot.commands
             if (all.Count == 0)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Info("Sem advertências", $"{user.Mention} não tem nenhuma advertência registrada.")));
+                    Embeds.Info("No warnings", $"{user.Mention} has no recorded warnings.")));
                 return;
             }
 
@@ -116,24 +116,24 @@ namespace CommunityBot.commands
                 .Skip((current - 1) * PageSize)
                 .Take(PageSize)
                 .Select(w =>
-                    $"`{w.id}` — <t:{w.createdAtUtc.ToUnixTimeSeconds()}:d> por <@{w.moderatorId}>\n" +
+                    $"`{w.id}` — <t:{w.createdAtUtc.ToUnixTimeSeconds()}:d> by <@{w.moderatorId}>\n" +
                     $"> {Embeds.Trim(w.reason, 200)}");
 
             var embed = new DiscordEmbedBuilder()
-                .WithTitle($"Advertências de {user.UsernameWithDiscriminator}")
+                .WithTitle($"Warnings for {user.UsernameWithDiscriminator}")
                 .WithDescription(string.Join("\n\n", lines))
                 .WithColor(DiscordColor.Orange)
                 .WithThumbnail(user.AvatarUrl)
-                .WithFooter($"Página {current}/{pageCount} — {all.Count} advertência(s) no total");
+                .WithFooter($"Page {current}/{pageCount} — {all.Count} warning(s) in total");
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("delwarn", "Remove uma advertência pelo id", (long)Permissions.ModerateMembers)]
+        [SlashCommand("delwarn", "Removes a warning by its ID", (long)Permissions.ModerateMembers)]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         public async Task DelWarnCommand(
             InteractionContext ctx,
-            [Option("id", "O id mostrado no /warnings")] string id)
+            [Option("id", "The ID shown in /warnings")] string id)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -173,18 +173,18 @@ namespace CommunityBot.commands
                 if (issuer is null)
                 {
                     await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                        Embeds.Error("Hierarquia indisponível",
-                            "Quem aplicou essa advertência não está mais no servidor, então não dá para conferir " +
-                            "se você está acima dele. Só quem tem o cargo de administrador pode resolver isso à mão.")));
+                        Embeds.Error("Role hierarchy unavailable",
+                            "Whoever issued this warning is no longer in the server, so I can't check " +
+                            "whether you outrank them. Only someone with an administrator role can sort this out manually.")));
                     return;
                 }
 
                 if (!Hierarchy.Outranks(ctx.Guild!, ctx.Member!, issuer))
                 {
                     await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                        Embeds.Error("Hierarquia",
-                            $"Essa advertência foi aplicada por {issuer.Mention}, que tem cargo igual ou mais alto " +
-                            "que o seu. Só quem está acima dele — ou ele mesmo — pode apagá-la.")));
+                        Embeds.Error("Role hierarchy",
+                            $"This warning was issued by {issuer.Mention}, whose role is equal to or higher " +
+                            "than yours. Only someone above them — or they themselves — can delete it.")));
                     return;
                 }
             }
@@ -207,24 +207,24 @@ namespace CommunityBot.commands
             if (removed is null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Id não encontrado",
-                        $"Nenhuma advertência com id `{Embeds.Trim(wanted, 40)}` neste servidor. Confira em `/warnings`.")));
+                    Embeds.Error("ID not found",
+                        $"No warning with ID `{Embeds.Trim(wanted, 40)}` in this server. Check `/warnings`.")));
                 return;
             }
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                Embeds.Ok("Advertência removida", $"A advertência `{removed.id}` de <@{removed.userId}> foi apagada.")));
+                Embeds.Ok("Warning removed", $"Warning `{removed.id}` for <@{removed.userId}> was deleted.")));
 
             // Tudo o que vem DEPOIS do "sucesso" acima e best-effort. O
             // GetUserAsync em especial: a conta pode ter sido apagada, e uma
             // excecao aqui chegaria ao SlashCommandErrored, que edita a mesma
-            // resposta original - o moderador veria "Falha no comando" numa
+            // resposta original - o moderador veria "Command failed" numa
             // advertencia que de fato foi removida.
             try
             {
                 var target = await ctx.Client.GetUserAsync(removed.userId);
-                await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Advertência removida", target, ctx.User,
-                    removed.reason, $"Id `{removed.id}`, registrada originalmente por <@{removed.moderatorId}>");
+                await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Warning removed", target, ctx.User,
+                    removed.reason, $"ID `{removed.id}`, originally issued by <@{removed.moderatorId}>");
             }
             catch (Exception ex)
             {

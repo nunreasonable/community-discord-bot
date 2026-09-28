@@ -29,40 +29,40 @@ namespace CommunityBot.commands
     {
         private static readonly string[] s_eightBall =
         {
-            "Com certeza.", "É decidido que sim.", "Sem dúvida.", "Sim, definitivamente.",
-            "Pode contar com isso.", "Pelo que vejo, sim.", "Provavelmente.", "Tudo indica que sim.",
-            "Resposta nebulosa, tente de novo.", "Pergunte mais tarde.", "Melhor não te dizer agora.",
-            "Não dá para prever agora.", "Concentre-se e pergunte de novo.",
-            "Não conte com isso.", "Minha resposta é não.", "Minhas fontes dizem que não.",
-            "As perspectivas não são boas.", "Muito duvidoso."
+            "It is certain.", "It is decidedly so.", "Without a doubt.", "Yes, definitely.",
+            "You may rely on it.", "As I see it, yes.", "Most likely.", "Signs point to yes.",
+            "Reply hazy, try again.", "Ask again later.", "Better not tell you now.",
+            "Cannot predict now.", "Concentrate and ask again.",
+            "Don't count on it.", "My reply is no.", "My sources say no.",
+            "Outlook not so good.", "Very doubtful."
         };
 
-        [SlashCommand("8ball", "Faz uma pergunta à bola oito")]
+        [SlashCommand("8ball", "Ask the magic 8-ball a question")]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task EightBallCommand(
             InteractionContext ctx,
-            [Option("pergunta", "O que você quer saber")] string question)
+            [Option("question", "What you want to know")] string question)
         {
             var answer = s_eightBall[RandomNumberGenerator.GetInt32(s_eightBall.Length)];
 
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AddEmbed(new DiscordEmbedBuilder()
-                    .WithTitle("🎱 Bola oito")
-                    .AddField(new DiscordEmbedField("Pergunta", Embeds.SafeTrim(question, 900), false))
-                    .AddField(new DiscordEmbedField("Resposta", answer, false))
+                    .WithTitle("🎱 Magic 8-ball")
+                    .AddField(new DiscordEmbedField("Question", Embeds.SafeTrim(question, 900), false))
+                    .AddField(new DiscordEmbedField("Answer", answer, false))
                     .WithColor(DiscordColor.Blurple)));
         }
 
-        [SlashCommand("roll", "Rola dados no formato NdM")]
+        [SlashCommand("roll", "Roll dice in NdM format")]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task RollCommand(
             InteractionContext ctx,
-            [Option("dados", "Ex.: 2d6, d20, 4d10")] string dados = "1d6")
+            [Option("dice", "E.g. 2d6, d20, 4d10")] string dados = "1d6")
         {
             if (!DiceRoller.TryRoll(dados, out var result, out var error))
             {
                 await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
-                    new DiscordInteractionResponseBuilder().AddEmbed(Embeds.Error("Dados inválidos", error!)).AsEphemeral());
+                    new DiscordInteractionResponseBuilder().AddEmbed(Embeds.Error("Invalid dice", error!)).AsEphemeral());
                 return;
             }
 
@@ -70,7 +70,7 @@ namespace CommunityBot.commands
             // interessa mesmo.
             var detail = result.Rolls.Count <= 20
                 ? string.Join(" + ", result.Rolls)
-                : $"{result.Rolls.Count} dados";
+                : $"{result.Rolls.Count} dice";
 
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AddEmbed(new DiscordEmbedBuilder()
@@ -79,7 +79,7 @@ namespace CommunityBot.commands
                     .WithColor(DiscordColor.Blurple)));
         }
 
-        [SlashCommand("coinflip", "Cara ou coroa")]
+        [SlashCommand("coinflip", "Flip a coin")]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task CoinflipCommand(InteractionContext ctx)
         {
@@ -87,15 +87,15 @@ namespace CommunityBot.commands
 
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AddEmbed(new DiscordEmbedBuilder()
-                    .WithTitle(heads ? "🪙 Cara" : "🪙 Coroa")
+                    .WithTitle(heads ? "🪙 Heads" : "🪙 Tails")
                     .WithColor(DiscordColor.Gold)));
         }
 
-        [SlashCommand("choose", "Escolhe uma das opções que você der")]
+        [SlashCommand("choose", "Pick one of the options you give")]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task ChooseCommand(
             InteractionContext ctx,
-            [Option("opcoes", "Separadas por vírgula ou ponto e vírgula")] string opcoes)
+            [Option("options", "Separated by commas or semicolons")] string opcoes)
         {
             // Aceita os dois separadores: quem escreve uma lista costuma usar
             // virgula, mas a opcao em si pode conter virgula.
@@ -110,8 +110,8 @@ namespace CommunityBot.commands
             if (options.Count < 2)
             {
                 await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
-                    new DiscordInteractionResponseBuilder().AddEmbed(Embeds.Error("Poucas opções",
-                        "Dê pelo menos duas opções, separadas por vírgula. Ex.: `pizza, sushi, hambúrguer`")).AsEphemeral());
+                    new DiscordInteractionResponseBuilder().AddEmbed(Embeds.Error("Not enough options",
+                        "Give at least two options, separated by commas. E.g. `pizza, sushi, burgers`")).AsEphemeral());
                 return;
             }
 
@@ -119,30 +119,30 @@ namespace CommunityBot.commands
 
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AddEmbed(new DiscordEmbedBuilder()
-                    .WithTitle("🤔 Escolhi")
+                    .WithTitle("🤔 I pick")
                     .WithDescription($"**{Embeds.SafeTrim(picked, 200)}**")
-                    .WithFooter($"de {options.Count} opções")
+                    .WithFooter($"out of {options.Count} options")
                     .WithColor(DiscordColor.Blurple)));
         }
 
-        [SlashCommand("avatar", "Mostra o avatar de um usuário em tamanho grande")]
+        [SlashCommand("avatar", "Show a user's avatar at full size")]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task AvatarCommand(
             InteractionContext ctx,
-            [Option("usuario", "De quem ver o avatar")] DiscordUser? usuario = null)
+            [Option("user", "Whose avatar to show")] DiscordUser? usuario = null)
         {
             var target = usuario ?? ctx.User;
             var url = target.GetAvatarUrl(MediaFormat.Auto, 1024);
 
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AddEmbed(new DiscordEmbedBuilder()
-                    .WithTitle($"Avatar de {target.UsernameWithDiscriminator}")
+                    .WithTitle($"{target.UsernameWithDiscriminator}'s avatar")
                     .WithImageUrl(url)
                     .WithUrl(url)
                     .WithColor(DiscordColor.Blurple)));
         }
 
-        [SlashCommand("say", "Faz o bot repetir um texto", (long)Permissions.ManageMessages)]
+        [SlashCommand("say", "Make the bot say something", (long)Permissions.ManageMessages)]
         // Exige ManageMessages: sem isso qualquer um faria o bot falar, e mensagem
         // vinda do bot tem aparencia de coisa oficial.
         [ApplicationCommandRequireUserPermissions(Permissions.ManageMessages)]
@@ -155,7 +155,7 @@ namespace CommunityBot.commands
         [SlashCommandCooldown(2, 15, CooldownBucketType.User)]
         public async Task SayCommand(
             InteractionContext ctx,
-            [Option("texto", "O que o bot vai dizer")] string texto)
+            [Option("text", "What the bot should say")] string texto)
         {
             // Sem mencao de cargo nem de @everyone: o /say seria um jeito de
             // contornar quem pode mencionar todo mundo.
@@ -195,8 +195,8 @@ namespace CommunityBot.commands
             if ((ctx.Member!.PermissionsIn(scope) & needed) == 0)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Sem permissão neste canal",
-                        "Você não pode enviar mensagens aqui, então também não pode fazer isso através de mim.")));
+                    Embeds.Error("No permission in this channel",
+                        "You can't send messages here, so you can't do it through me either.")));
                 return;
             }
 
@@ -207,22 +207,22 @@ namespace CommunityBot.commands
             catch (Exception ex)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Falha ao publicar", Embeds.Trim(ex.Message, 500))));
+                    Embeds.Error("Couldn't post the message", Embeds.Trim(ex.Message, 500))));
                 return;
             }
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                Embeds.Ok("Enviado", "A mensagem foi publicada no canal.")));
+                Embeds.Ok("Sent", "The message was posted in the channel.")));
 
             // Registrado como qualquer outra acao privilegiada. Era a unica que
             // nao deixava rastro em lugar NENHUM: a resposta e efemera, a mensagem
             // sai assinada pelo bot, e o Audit Log do Discord nao cobre envio de
             // mensagem. "Quem fez o bot dizer isso?" nao tinha resposta.
-            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Mensagem via /say",
+            await ModerationLog.RecordAsync(ctx.Client, ctx.Guild!.Id, "Message via /say",
                 null, ctx.User, null,
                 $"{ctx.Channel.Mention}: {Embeds.SafeTrim(texto, 500)}",
-                // Nao ha alvo: o rotulo padrao ("toda a conversa do canal") e do
-                // /purge e sairia como "Usuario: toda a conversa do canal" para
+                // Nao ha alvo: o rotulo padrao ("entire channel") e do
+                // /purge e sairia como "User: entire channel" para
                 // uma mensagem publicada.
                 noTargetLabel: "—");
         }

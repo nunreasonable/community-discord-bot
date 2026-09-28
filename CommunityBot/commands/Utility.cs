@@ -20,7 +20,7 @@ namespace CommunityBot.commands
     // sobre RequireUserPermissions ter IgnoreDms = true.
     internal class Utility : ApplicationCommandsModule
     {
-        [SlashCommand("ping", "Mostra a latência do bot")]
+        [SlashCommand("ping", "Show the bot's latency")]
         public async Task PingCommand(InteractionContext ctx)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
@@ -30,11 +30,11 @@ namespace CommunityBot.commands
                     .WithColor(DiscordColor.Blurple)));
         }
 
-        [SlashCommand("userinfo", "Mostra informações de um usuário")]
+        [SlashCommand("userinfo", "Show information about a user")]
         [ApplicationCommandRequireGuild]
         public async Task UserInfoCommand(
             InteractionContext ctx,
-            [Option("usuario", "De quem ver as informações")] DiscordUser? usuario = null)
+            [Option("user", "Whose information to show")] DiscordUser? usuario = null)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource);
 
@@ -45,9 +45,9 @@ namespace CommunityBot.commands
                 .WithThumbnail(target.GetAvatarUrl(MediaFormat.Auto, 256))
                 .WithColor(DiscordColor.Blurple)
                 .AddField(new DiscordEmbedField("ID", $"`{target.Id}`", true))
-                .AddField(new DiscordEmbedField("Conta criada",
+                .AddField(new DiscordEmbedField("Account created",
                     $"<t:{target.CreationTimestamp.ToUnixTimeSeconds()}:D>", true))
-                .AddField(new DiscordEmbedField("Bot", target.IsBot ? "Sim" : "Não", true));
+                .AddField(new DiscordEmbedField("Bot", target.IsBot ? "Yes" : "No", true));
 
             DiscordMember? member = null;
             try
@@ -58,14 +58,14 @@ namespace CommunityBot.commands
             {
                 // SO o "usuario nao esta no servidor". O catch sem filtro que
                 // estava aqui engolia tambem rate limit, 5xx e cancelamento, e
-                // todos viravam a mesma afirmacao falsa no rodape ("nao esta
-                // neste servidor") - sem deixar nada no BotLogBuffer para o
+                // todos viravam a mesma afirmacao falsa no rodape ("is not in
+                // this server") - sem deixar nada no BotLogBuffer para o
                 // /logs diagnosticar.
             }
 
             if (member is not null)
             {
-                embed.AddField(new DiscordEmbedField("Entrou no servidor",
+                embed.AddField(new DiscordEmbedField("Joined server",
                     member.JoinedAt == default ? "—" : $"<t:{member.JoinedAt.ToUnixTimeSeconds()}:D>", true));
 
                 // Ordem decrescente e sem o @everyone, que todo mundo tem e nao
@@ -77,8 +77,8 @@ namespace CommunityBot.commands
                     .Select(r => r.Mention)
                     .ToList();
 
-                embed.AddField(new DiscordEmbedField($"Cargos ({roles.Count})",
-                    roles.Count == 0 ? "*nenhum*" : Embeds.Trim(string.Join(" ", roles), 1000), false));
+                embed.AddField(new DiscordEmbedField($"Roles ({roles.Count})",
+                    roles.Count == 0 ? "*none*" : Embeds.Trim(string.Join(" ", roles), 1000), false));
 
                 // ToUniversalTime em vez de SpecifyKind: o SpecifyKind RE-ROTULA o
                 // valor sem converter, entao um DateTime que chegasse com Kind
@@ -89,19 +89,19 @@ namespace CommunityBot.commands
                     && mutedUntil.ToUniversalTime() > DateTime.UtcNow)
                 {
                     var until = new DateTimeOffset(mutedUntil.ToUniversalTime(), TimeSpan.Zero);
-                    embed.AddField(new DiscordEmbedField("Silenciado até",
+                    embed.AddField(new DiscordEmbedField("Timed out until",
                         $"<t:{until.ToUnixTimeSeconds()}:f>", true));
                 }
             }
             else
             {
-                embed.WithFooter("Este usuário não está no servidor.");
+                embed.WithFooter("This user is not in this server.");
             }
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("serverinfo", "Mostra informações do servidor")]
+        [SlashCommand("serverinfo", "Show information about the server")]
         [ApplicationCommandRequireGuild]
         public async Task ServerInfoCommand(InteractionContext ctx)
         {
@@ -113,8 +113,8 @@ namespace CommunityBot.commands
             // ToString e o que importa: `Nullable<T>.ToString()` devolve STRING
             // VAZIA quando nao ha valor, nunca null, entao o `?? "—"` de antes era
             // codigo morto - e o campo saia vazio. O Discord recusa campo de embed
-            // com valor vazio, entao o /serverinfo inteiro morria em "Falha no
-            // comando" sempre que um dos dois nao viesse preenchido.
+            // com valor vazio, entao o /serverinfo inteiro morria em "Command
+            // failed" sempre que um dos dois nao viesse preenchido.
             //
             // (O comentario antigo dizia que tirar os `??` daria CS8604. Isso vale
             // para as colecoes abaixo, que sao de tipo referencia; para os dois
@@ -128,17 +128,17 @@ namespace CommunityBot.commands
                 .WithTitle(guild.Name)
                 .WithColor(DiscordColor.Blurple)
                 .AddField(new DiscordEmbedField("ID", $"`{guild.Id}`", true))
-                .AddField(new DiscordEmbedField("Criado em",
+                .AddField(new DiscordEmbedField("Created",
                     $"<t:{guild.CreationTimestamp.ToUnixTimeSeconds()}:D>", true))
                 // OwnerId tambem e `ulong?`, como MemberCount e PremiumTier: com
                 // ele nulo o campo saia como um "<@>" literal, que nao e mencao
                 // nem nome.
-                .AddField(new DiscordEmbedField("Dono",
+                .AddField(new DiscordEmbedField("Owner",
                     guild.OwnerId is { } ownerId ? $"<@{ownerId}>" : "—", true))
-                .AddField(new DiscordEmbedField("Membros", members, true))
-                .AddField(new DiscordEmbedField("Cargos", roleCount, true))
-                .AddField(new DiscordEmbedField("Canais", channelCount, true))
-                .AddField(new DiscordEmbedField("Nível de boost", boost, true));
+                .AddField(new DiscordEmbedField("Members", members, true))
+                .AddField(new DiscordEmbedField("Roles", roleCount, true))
+                .AddField(new DiscordEmbedField("Channels", channelCount, true))
+                .AddField(new DiscordEmbedField("Boost level", boost, true));
 
             if (!string.IsNullOrWhiteSpace(guild.IconUrl))
                 embed.WithThumbnail(guild.IconUrl);
@@ -146,21 +146,21 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("poll", "Cria uma enquete de sim/não com reações")]
+        [SlashCommand("poll", "Create a yes/no poll with reactions")]
         [ApplicationCommandRequireGuild]
         [ApplicationCommandRequireBotPermissions(Permissions.AddReactions | Permissions.ReadMessageHistory)]
         [SlashCommandCooldown(2, 30, CooldownBucketType.User)]
         public async Task PollCommand(
             InteractionContext ctx,
-            [Option("pergunta", "O que está sendo perguntado")] string pergunta)
+            [Option("question", "What you're asking")] string pergunta)
         {
             // Os votos vivem nas reacoes, nao no processo: uma enquete que morre
             // ao reiniciar o bot nao serve para nada.
             var embed = new DiscordEmbedBuilder()
-                .WithTitle("📊 Enquete")
+                .WithTitle("📊 Poll")
                 .WithDescription(Embeds.SafeTrim(pergunta, 1500))
                 .WithColor(DiscordColor.Blurple)
-                .WithFooter($"Criada por {ctx.User.UsernameWithDiscriminator}");
+                .WithFooter($"Created by {ctx.User.UsernameWithDiscriminator}");
 
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AddEmbed(embed));
@@ -183,33 +183,33 @@ namespace CommunityBot.commands
             }
         }
 
-        [SlashCommand("help", "Lista os comandos disponíveis")]
+        [SlashCommand("help", "List the available commands")]
         public async Task HelpCommand(InteractionContext ctx)
         {
             var embed = new DiscordEmbedBuilder()
-                .WithTitle("Comandos")
-                .WithDescription("Os comandos de moderação só aparecem para quem tem a permissão correspondente no servidor.")
+                .WithTitle("Commands")
+                .WithDescription("Moderation commands only show up for members who have the matching permission in the server.")
                 .WithColor(DiscordColor.Blurple)
-                .AddField(new DiscordEmbedField("Moderação",
+                .AddField(new DiscordEmbedField("Moderation",
                     "`/ban` `/softban` `/kick` `/timeout` `/untimeout` `/purge` `/slowmode` `/lock` `/unlock`", false))
-                .AddField(new DiscordEmbedField("Advertências",
+                .AddField(new DiscordEmbedField("Warnings",
                     "`/warn` `/warnings` `/delwarn`", false))
                 .AddField(new DiscordEmbedField("Tickets",
-                    "`/ticket` `/ticket-fechar` `/ticket-add` `/ticket-remove` `/ticket-painel`", false))
-                .AddField(new DiscordEmbedField("Verificação Roblox",
-                    "`/verify` `/unverify` `/update` `/whois` `/verify-painel` " +
-                    "`/bind adicionar` `/bind remover` `/bind listar`", false))
-                .AddField(new DiscordEmbedField("Diversão",
+                    "`/ticket` `/ticket-close` `/ticket-add` `/ticket-remove` `/ticket-panel`", false))
+                .AddField(new DiscordEmbedField("Roblox verification",
+                    "`/verify` `/unverify` `/update` `/whois` `/verify-panel` " +
+                    "`/bind add` `/bind remove` `/bind list`", false))
+                .AddField(new DiscordEmbedField("Fun",
                     "`/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/say`", false))
-                .AddField(new DiscordEmbedField("Configuração",
-                    "`/config ver` `/config log-moderacao` `/config auto-softban` " +
-                    "`/config tickets-categoria` `/config tickets-cargo` `/config tickets-log` " +
-                    "`/config verificacao-cargo` `/config verificacao-nao-verificado` " +
-                    "`/config verificacao-apelido` `/config verificacao-idade-minima`", false))
+                .AddField(new DiscordEmbedField("Configuration",
+                    "`/config view` `/config mod-log` `/config auto-softban` " +
+                    "`/config tickets-category` `/config tickets-role` `/config tickets-log` " +
+                    "`/config verify-role` `/config verify-unverified-role` " +
+                    "`/config verify-nickname` `/config verify-min-age`", false))
                 // Sem /logs: ele e de quem administra o BOT, nao de quem usa o
                 // servidor, e anunciar um comando que so uma pessoa no mundo pode
                 // rodar so rende tentativa recusada.
-                .AddField(new DiscordEmbedField("Utilidade",
+                .AddField(new DiscordEmbedField("Utility",
                     "`/ping` `/userinfo` `/serverinfo` `/poll` `/help`", false));
 
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,

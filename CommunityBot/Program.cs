@@ -107,7 +107,7 @@ namespace CommunityBot
             Client.ComponentInteractionCreated += TicketComponents.OnComponent;
             Client.GuildDownloadCompleted += TicketService.ReportStatusAsync;
 
-            // Botoes da verificacao Roblox (painel, "Ja autorizei", desvincular).
+            // Botoes da verificacao Roblox (painel, "I've authorized", Unlink).
             // Mesmo esquema dos tickets: handler proprio, Handled so para
             // custom id "verify:".
             Client.ComponentInteractionCreated += VerificationFlow.OnComponent;
@@ -215,7 +215,7 @@ namespace CommunityBot
 
                     try
                     {
-                        var embed = Embeds.Error("Comando recusado", DescribeFailedChecks(explain));
+                        var embed = Embeds.Error("Command denied", DescribeFailedChecks(explain));
 
                         if (alreadyAnswered)
                         {
@@ -242,8 +242,8 @@ namespace CommunityBot
                     // O comando quase sempre ja deferiu; por isso edita a
                     // resposta original em vez de criar uma nova.
                     await e.Context!.EditResponseAsync(new DiscordWebhookBuilder()
-                        .AddEmbed(Embeds.Error("Falha no comando",
-                            "Algo quebrou ao executar. O erro foi registrado; avise quem administra o bot.")));
+                        .AddEmbed(Embeds.Error("Command failed",
+                            "Something went wrong while running this command. The error was logged; let the bot's admin know.")));
                 }
                 catch (Exception inner)
                 {
@@ -392,19 +392,19 @@ namespace CommunityBot
                 switch (check)
                 {
                     case ApplicationCommandRequireBotPermissionsAttribute:
-                        reasons.Add("**eu** não tenho a permissão necessária neste servidor — confira o cargo do bot");
+                        reasons.Add("**I** don't have the permission this needs in this server — check the bot's role");
                         break;
                     case ApplicationCommandRequireUserPermissionsAttribute:
-                        reasons.Add("você não tem a permissão que este comando exige");
+                        reasons.Add("you don't have the permission this command requires");
                         break;
                     case ApplicationCommandRequireGuildAttribute:
-                        reasons.Add("este comando só funciona dentro de um servidor");
+                        reasons.Add("this command only works inside a server");
                         break;
                 }
             }
 
             if (reasons.Count == 0)
-                reasons.Add("uma checagem de permissão recusou a execução");
+                reasons.Add("a permission check blocked this command");
 
             return string.Join("\n", reasons.Distinct().Select(r => $"• {r}"));
         }
@@ -518,7 +518,7 @@ namespace CommunityBot
                 {
                     await interaction.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                         new DiscordInteractionResponseBuilder()
-                            .WithContent("Você não rodou esse comando para poder fazer essa ação")
+                            .WithContent("Only the person who ran this command can use these buttons.")
                             .AsEphemeral());
                 }
                 catch (Exception ex)
@@ -541,7 +541,7 @@ namespace CommunityBot
         {
             // TickCount64, e nao o relogio de parede: um ajuste de NTP de +3s
             // produzia um "[pool] thread pool atrasou 3.0s" que nunca aconteceu -
-            // classificado como AVISO e servido justamente no `/logs nivel:aviso`
+            // classificado como AVISO e servido justamente no `/logs level:aviso`
             // que se usa quando o bot parece lento. Tempo decorrido pede relogio
             // monotonico.
             var last = Environment.TickCount64;
@@ -556,7 +556,7 @@ namespace CommunityBot
                     // Tag [pool] e nao [canary]: e "[pool]" que o
                     // BotLogBuffer.Classify reconhece como AVISO. Com a tag
                     // antiga, inanicao de thread pool era arquivada como INFO e
-                    // ficava invisivel em `/logs nivel:aviso` - justamente o
+                    // ficava invisivel em `/logs level:aviso` - justamente o
                     // filtro que se usa quando o bot esta "lento sem motivo".
                     Console.WriteLine($"[pool] thread pool atrasou {drift.TotalSeconds:0.0}s");
             }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));

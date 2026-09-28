@@ -27,7 +27,7 @@ namespace CommunityBot.Services
             var text = (input ?? string.Empty).Trim().ToLowerInvariant();
             if (text.Length == 0)
             {
-                error = "Informe uma duração, por exemplo `10m`, `2h30m` ou `1d`.";
+                error = "Enter a duration, for example `10m`, `2h30m` or `1d`.";
                 return false;
             }
 
@@ -40,7 +40,7 @@ namespace CommunityBot.Services
                 // ASCII 0-9 apenas, e nao char.IsDigit: este ultimo aceita toda a
                 // categoria Unicode Nd (٣, ৩, ๓...), que o long.TryParse com
                 // NumberStyles.None/InvariantCulture depois recusa - o resultado
-                // era a mensagem de erro ERRADA ("Número grande demais.") para uma
+                // era a mensagem de erro ERRADA ("Number too large.") para uma
                 // entrada que na verdade tem caractere invalido.
                 if (ch >= '0' && ch <= '9')
                 {
@@ -53,7 +53,7 @@ namespace CommunityBot.Services
 
                 if (number.Length == 0)
                 {
-                    error = $"Faltou o número antes de `{ch}`. Use algo como `10m` ou `2h30m`.";
+                    error = $"Missing a number before `{ch}`. Use something like `10m` or `2h30m`.";
                     return false;
                 }
 
@@ -61,7 +61,7 @@ namespace CommunityBot.Services
                 // TimeSpan - e melhor cair no teto abaixo do que num overflow.
                 if (!long.TryParse(number.ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var value))
                 {
-                    error = "Número grande demais.";
+                    error = "Number too large.";
                     return false;
                 }
 
@@ -73,7 +73,7 @@ namespace CommunityBot.Services
                     case 'h': unit = TimeSpan.FromHours(1); break;
                     case 'd': unit = TimeSpan.FromDays(1); break;
                     default:
-                        error = $"Unidade `{ch}` não existe. Use `s`, `m`, `h` ou `d`.";
+                        error = $"Unknown unit `{ch}`. Use `s`, `m`, `h` or `d`.";
                         return false;
                 }
 
@@ -83,13 +83,13 @@ namespace CommunityBot.Services
                 }
                 catch (OverflowException)
                 {
-                    error = "Duração grande demais.";
+                    error = "Duration too large.";
                     return false;
                 }
 
                 if (total > MaxTimeout)
                 {
-                    error = $"O Discord não aceita mais que {MaxTimeout.TotalDays:0} dias.";
+                    error = $"Discord doesn't allow more than {MaxTimeout.TotalDays:0} days.";
                     return false;
                 }
 
@@ -101,13 +101,13 @@ namespace CommunityBot.Services
             // Melhor recusar e dizer o formato.
             if (number.Length > 0)
             {
-                error = "Falta a unidade no fim. Use `s`, `m`, `h` ou `d` — por exemplo `10m`.";
+                error = "Missing a unit at the end. Use `s`, `m`, `h` or `d` — for example `10m`.";
                 return false;
             }
 
             if (!sawUnit || total <= TimeSpan.Zero)
             {
-                error = "A duração precisa ser maior que zero.";
+                error = "The duration must be greater than zero.";
                 return false;
             }
 
@@ -115,17 +115,17 @@ namespace CommunityBot.Services
             return true;
         }
 
-        /// <summary>Escreve a duracao de volta em portugues, para o embed de confirmacao.</summary>
+        /// <summary>Escreve a duracao de volta em ingles, para o embed de confirmacao.</summary>
         public static string Describe(TimeSpan duration)
         {
             var parts = new System.Collections.Generic.List<string>();
 
-            if (duration.Days > 0) parts.Add($"{duration.Days} dia(s)");
-            if (duration.Hours > 0) parts.Add($"{duration.Hours} hora(s)");
-            if (duration.Minutes > 0) parts.Add($"{duration.Minutes} minuto(s)");
-            if (duration.Seconds > 0) parts.Add($"{duration.Seconds} segundo(s)");
+            if (duration.Days > 0) parts.Add($"{duration.Days} day(s)");
+            if (duration.Hours > 0) parts.Add($"{duration.Hours} hour(s)");
+            if (duration.Minutes > 0) parts.Add($"{duration.Minutes} minute(s)");
+            if (duration.Seconds > 0) parts.Add($"{duration.Seconds} second(s)");
 
-            return parts.Count == 0 ? "0 segundos" : string.Join(", ", parts);
+            return parts.Count == 0 ? "0 seconds" : string.Join(", ", parts);
         }
     }
 }

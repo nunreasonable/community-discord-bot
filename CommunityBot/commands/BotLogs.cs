@@ -43,29 +43,29 @@ namespace CommunityBot.commands
         // que o bot esta, e qualquer pessoa que criasse um servidor e
         // convidasse o bot seria administradora nele. Por isso a checagem de
         // dono da aplicacao no corpo do comando - ver IsApplicationOwner.
-        [SlashCommand("logs", "Mostra os últimos logs do bot", (long)Permissions.Administrator)]
+        [SlashCommand("logs", "Show the bot's latest logs", (long)Permissions.Administrator)]
         [ApplicationCommandRequireUserPermissions(Permissions.Administrator)]
         public async Task LogsCommand(
             InteractionContext ctx,
-            [Option("quantidade", "Quantas linhas mostrar (1 a 100, padrão 25)")] long quantidade = 25,
-            [Choice("Todos", LevelAll)]
-            [Choice("Apenas erros", LevelError)]
-            [Choice("Apenas avisos", LevelWarn)]
-            [Choice("Apenas informativos", LevelInfo)]
-            [Option("nivel", "Filtrar por severidade")] string nivel = LevelAll,
-            [Option("filtro", "Mostrar apenas linhas que contenham este texto")] string? filtro = null,
-            [Option("privado", "Mostrar apenas para você")] bool privado = true)
+            [Option("amount", "How many lines to show (1–100, default 25)")] long quantidade = 25,
+            [Choice("All", LevelAll)]
+            [Choice("Errors only", LevelError)]
+            [Choice("Warnings only", LevelWarn)]
+            [Choice("Info only", LevelInfo)]
+            [Option("level", "Filter by severity")] string nivel = LevelAll,
+            [Option("filter", "Only show lines that contain this text")] string? filtro = null,
+            [Option("private", "Only show the result to you")] bool privado = true)
         {
             if (!IsApplicationOwner(ctx))
             {
                 await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
                     new DiscordInteractionResponseBuilder()
-                        .AddEmbed(Embeds.Error("Comando recusado",
-                            "O `/logs` mostra o log do **processo inteiro** — o que o bot fez em " +
-                            "todos os servidores em que está, com ids de usuário, mensagens de " +
-                            "exceção e caminhos da máquina.\n\n" +
-                            "Por isso ele é de quem administra **o bot**, não de quem administra " +
-                            "um servidor."))
+                        .AddEmbed(Embeds.Error("Command denied",
+                            "`/logs` shows the log for the **entire process** — what the bot did in " +
+                            "every server it's in, including user IDs, exception messages and " +
+                            "file paths on the host machine.\n\n" +
+                            "That's why it's reserved for whoever runs **the bot**, not whoever runs " +
+                            "a server."))
                         .AsEphemeral());
                 return;
             }
@@ -86,10 +86,10 @@ namespace CommunityBot.commands
             if (lines.Count == 0)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(new DiscordEmbedBuilder()
-                    .WithTitle("Logs do bot")
+                    .WithTitle("Bot logs")
                     .WithDescription(BotLogBuffer.TotalSeen == 0
-                        ? "Nenhuma linha capturada ainda. O buffer começa vazio a cada reinício do bot."
-                        : $"Nenhuma linha corresponde ao filtro.\n{scope}")
+                        ? "No lines captured yet. The buffer starts empty every time the bot restarts."
+                        : $"No lines match the filter.\n{scope}")
                     .WithColor(DiscordColor.Orange)));
                 return;
             }
@@ -149,16 +149,21 @@ namespace CommunityBot.commands
             var counts = BotLogBuffer.Counts();
             var parts = new List<string>();
 
+            // Mostra o nome exibido do nivel (ERROR/WARN/INFO), e nao o valor
+            // interno da escolha ("erro"/"aviso"), que e em portugues.
             if (!string.Equals(nivel, LevelAll, StringComparison.OrdinalIgnoreCase))
-                parts.Add($"nível: `{nivel}`");
+            {
+                var levelLabel = BotLogBuffer.ParseLevel(nivel) is { } parsed ? BotLogBuffer.LevelName(parsed) : nivel;
+                parts.Add($"level: `{levelLabel}`");
+            }
             if (contains is not null)
-                parts.Add($"texto: `{Embeds.Trim(contains, 40)}`");
+                parts.Add($"text: `{Embeds.Trim(contains, 40)}`");
 
-            var buffer = $"Buffer: {counts.Info} info · {counts.Aviso} aviso · {counts.Erro} erro.";
+            var buffer = $"Buffer: {counts.Info} info · {counts.Aviso} warn · {counts.Erro} error.";
 
             return parts.Count == 0
-                ? $"Últimas {shown} de até {take} linha(s). {buffer}"
-                : $"Filtro — {string.Join(" · ", parts)} · {shown} linha(s). {buffer}";
+                ? $"Latest {shown} of up to {take} line(s). {buffer}"
+                : $"Filter — {string.Join(" · ", parts)} · {shown} line(s). {buffer}";
         }
 
         /// <summary>
@@ -168,7 +173,7 @@ namespace CommunityBot.commands
         /// </summary>
         // 2800, e nao 3200: o `scope` e prefixado a TODA pagina e nunca era
         // contado, e a cerca de crases soma mais alguns. A descricao de um embed
-        // para em 4096 e estourar derruba o /logs inteiro com "Falha no comando" -
+        // para em 4096 e estourar derruba o /logs inteiro com "Command failed" -
         // justamente quando alguem esta tentando ler o log para entender um
         // incidente.
         private static List<DiscordEmbedBuilder> BuildPages(List<LogLine> lines, string scope, int maxCharsPerPage = 2800)
@@ -183,7 +188,7 @@ namespace CommunityBot.commands
                 // caracteres e uma pagina de 3200 crus podia render 5300 - acima
                 // do teto do embed. E linha de log com ``` chega ate aqui: o
                 // Program escreve a excecao INTEIRA no console, e uma mensagem de
-                // erro da API pode ecoar o `motivo` que alguem digitou.
+                // erro da API pode ecoar o `reason` que alguem digitou.
                 var text = $"[{stamp}] {BotLogBuffer.LevelName(line.Level),-5} {line.Text}\n"
                     .Replace("```", "`\u200b`\u200b`");
 
@@ -203,14 +208,14 @@ namespace CommunityBot.commands
             for (var i = 0; i < chunks.Count; i++)
             {
                 pages.Add((new DiscordEmbedBuilder()
-                    .WithTitle("Logs do bot")
+                    .WithTitle("Bot logs")
                     // Zero-width space entre as crases: uma linha de log com ```
                     // dentro - que chega ate aqui por uma mensagem de erro da API
-                    // ecoando o `motivo` que alguem digitou - fechava a cerca no
+                    // ecoando o `reason` que alguem digitou - fechava a cerca no
                     // meio e embaralhava o resto da pagina.
                     .WithDescription($"{scope}\n```\n{chunks[i]}```")
                     .WithColor(DiscordColor.Blurple)
-                    .WithFooter($"Página {i + 1}/{chunks.Count} — mais recente primeiro")
+                    .WithFooter($"Page {i + 1}/{chunks.Count} — newest first")
                     .WithTimestamp(DateTimeOffset.UtcNow)));
             }
 

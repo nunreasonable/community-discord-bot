@@ -39,7 +39,7 @@ namespace CommunityBot.Services
         /// segunda e irreversivel. Marcar `closedAtUtc` logo na entrada, como era
         /// antes, tinha um efeito que so aparece quando o arquivamento falha: o
         /// canal fica de pe (correto) mas o registro ja esta fechado, e TODO
-        /// caminho de volta - /ticket-fechar, o botao Fechar, /ticket-add -
+        /// caminho de volta - /ticket-close, o botao Close, /ticket-add -
         /// recusa ticket fechado. O canal virava invisivel para o bot, sem como
         /// tentar de novo e sem como apagar a nao ser a mao.
         ///

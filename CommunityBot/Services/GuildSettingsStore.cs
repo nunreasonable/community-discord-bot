@@ -238,7 +238,7 @@ namespace CommunityBot.Services
 
         /// <summary>
         /// Aplica uma mudanca na configuracao de um servidor e devolve como ela
-        /// ficou. Guarda quem mexeu e quando, para o /config ver poder dizer.
+        /// ficou. Guarda quem mexeu e quando, para o /config view poder dizer.
         /// </summary>
         public Task<GuildSettings> SetAsync(ulong guildId, ulong actorId, Action<GuildSettings> apply) =>
             UpdateAsync(edit =>

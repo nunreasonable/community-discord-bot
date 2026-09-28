@@ -26,22 +26,22 @@ namespace CommunityBot.Services
         /// depois do connect. Antes o parametro era nao-nulo e os chamadores
         /// passavam esse valor mesmo assim (quatro CS8604): o `bot.Id` da linha
         /// seguinte lancava NullReferenceException e o moderador via um generico
-        /// "Algo quebrou" - falha ABERTA, porque a checagem nao chegava a rodar.
+        /// "Something went wrong" - falha ABERTA, porque a checagem nao chegava a rodar.
         /// Agora, sem saber onde o bot esta na hierarquia, a resposta e recusar.
         /// </summary>
         public static DiscordEmbed? Check(DiscordGuild guild, DiscordMember actor, DiscordMember target, DiscordMember? bot)
         {
             if (bot is null)
             {
-                return Embeds.Error("Hierarquia indisponível",
-                    "Não consegui ler o meu próprio cargo neste servidor agora, então não dá para conferir a hierarquia. Tente de novo em alguns segundos.");
+                return Embeds.Error("Role hierarchy unavailable",
+                    "I couldn't read my own role in this server right now, so I can't check the role hierarchy. Try again in a few seconds.");
             }
 
             if (target.Id == actor.Id)
-                return Embeds.Error("Alvo inválido", "Você não pode aplicar isso em você mesmo.");
+                return Embeds.Error("Invalid target", "You can't use this on yourself.");
 
             if (target.Id == bot.Id)
-                return Embeds.Error("Alvo inválido", "Não posso aplicar isso em mim mesmo.");
+                return Embeds.Error("Invalid target", "I can't use this on myself.");
 
             // guild.OwnerId e `ulong?`, e a comparacao com um `ulong` e LIFTED:
             // com OwnerId nulo, `target.Id == guild.OwnerId` da FALSE e a
@@ -51,25 +51,25 @@ namespace CommunityBot.Services
             // mesmo caso de nao conseguir ler o proprio cargo: recusa.
             if (guild.OwnerId is not { } ownerId)
             {
-                return Embeds.Error("Hierarquia indisponível",
-                    "Não consegui ler quem é o dono deste servidor agora, então não dá para conferir a hierarquia. Tente de novo em alguns segundos.");
+                return Embeds.Error("Role hierarchy unavailable",
+                    "I couldn't read who owns this server right now, so I can't check the role hierarchy. Try again in a few seconds.");
             }
 
             if (target.Id == ownerId)
-                return Embeds.Error("Alvo inválido", "Não é possível moderar o dono do servidor.");
+                return Embeds.Error("Invalid target", "The server owner can't be moderated.");
 
             // O dono passa por cima da comparacao de cargo: o cargo mais alto dele
             // nao precisa ser o mais alto do servidor.
             if (actor.Id != ownerId && TopRole(target) >= TopRole(actor))
             {
-                return Embeds.Error("Hierarquia",
-                    $"{target.Mention} tem um cargo igual ou mais alto que o seu, então você não pode moderá-lo.");
+                return Embeds.Error("Role hierarchy",
+                    $"{target.Mention} has a role equal to or higher than yours, so you can't moderate them.");
             }
 
             if (TopRole(target) >= TopRole(bot))
             {
-                return Embeds.Error("Hierarquia",
-                    $"{target.Mention} está acima do meu cargo mais alto. Mova o meu cargo para cima na lista de cargos do servidor.");
+                return Embeds.Error("Role hierarchy",
+                    $"{target.Mention} is above my highest role. Move my role higher in the server's role list.");
             }
 
             return null;

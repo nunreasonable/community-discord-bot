@@ -56,9 +56,9 @@ namespace CommunityBot.Services.Roblox
         private static readonly ConcurrentDictionary<ulong, CancellationTokenSource> s_polls = new();
 
         /// <summary>
-        /// Uma conclusao por pessoa de cada vez. Sem isto o polling e o botao "Ja
-        /// autorizei" podiam consumir o resultado em paralelo - um levava, o outro
-        /// dizia "ainda nao chegou nada" para quem acabou de verificar.
+        /// Uma conclusao por pessoa de cada vez. Sem isto o polling e o botao "I've
+        /// authorized" podiam consumir o resultado em paralelo - um levava, o outro
+        /// dizia "Nothing received yet" para quem acabou de verificar.
         /// </summary>
         private static readonly ConcurrentDictionary<ulong, SemaphoreSlim> s_gates = new();
 
@@ -72,11 +72,11 @@ namespace CommunityBot.Services.Roblox
                     new DiscordInteractionResponseBuilder().AsEphemeral());
 
                 var report = await VerificationService.ApplyAsync(client, guild, member, existing,
-                    AuditReason.Automatic("Verificação Roblox: /verify de quem já estava vinculado"));
+                    AuditReason.Automatic("Roblox verification: /verify by an already linked member"));
 
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    LinkedEmbed("Você já está verificado", existing, report,
-                        "Para trocar de conta Roblox, rode `/unverify` e depois `/verify` de novo.")));
+                    LinkedEmbed("You're already verified", existing, report,
+                        "To switch Roblox accounts, run `/unverify` and then `/verify` again.")));
                 return;
             }
 
@@ -84,8 +84,8 @@ namespace CommunityBot.Services.Roblox
             if (!settings.IsConfigured)
             {
                 await interaction.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
-                    new DiscordInteractionResponseBuilder().AsEphemeral().AddEmbed(Embeds.Error("Verificação indisponível",
-                        "Quem administra o bot ainda não ligou a verificação Roblox. Não há nada de errado do seu lado.")));
+                    new DiscordInteractionResponseBuilder().AsEphemeral().AddEmbed(Embeds.Error("Verification unavailable",
+                        "Whoever runs the bot hasn't turned on Roblox verification yet. Nothing is wrong on your end.")));
                 return;
             }
 
@@ -94,8 +94,8 @@ namespace CommunityBot.Services.Roblox
                     .AsEphemeral()
                     .AddEmbed(PromptEmbed())
                     .AddComponents(
-                        new DiscordLinkButtonComponent(settings.startUrl, "Abrir verificação"),
-                        new DiscordButtonComponent(ButtonStyle.Secondary, CheckId, "Já autorizei")));
+                        new DiscordLinkButtonComponent(settings.startUrl, "Open verification"),
+                        new DiscordButtonComponent(ButtonStyle.Secondary, CheckId, "I've authorized")));
 
             StartPolling(client, interaction, guild.Id, member.Id);
         }
@@ -117,7 +117,7 @@ namespace CommunityBot.Services.Roblox
                 {
                     if (e.Guild is not { } guild || e.Member is not { } member)
                     {
-                        await TryFailAsync(interaction, "Isso só funciona dentro de um servidor.");
+                        await TryFailAsync(interaction, "This only works inside a server.");
                         return;
                     }
 
@@ -137,14 +137,14 @@ namespace CommunityBot.Services.Roblox
 
                         default:
                             Console.WriteLine($"[verificacao] custom id desconhecido: '{id}'");
-                            await TryFailAsync(interaction, "Esse botão é de uma versão antiga. Rode `/verify` de novo.");
+                            await TryFailAsync(interaction, "This button is from an old version. Run `/verify` again.");
                             return;
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[verificacao] falha ao tratar '{id}' de {e.User.Id}: {ex}");
-                    await TryFailAsync(interaction, "Algo quebrou ao processar essa ação. Avise quem administra o bot.");
+                    await TryFailAsync(interaction, "Something broke while processing this action. Let whoever runs the bot know.");
                 }
             });
 
@@ -156,21 +156,21 @@ namespace CommunityBot.Services.Roblox
             var embed = new DiscordEmbedBuilder()
                 .WithTitle(title)
                 .WithColor(DiscordColor.SpringGreen)
-                .WithDescription($"Conta Roblox: {Describe(link)}");
+                .WithDescription($"Roblox account: {Describe(link)}");
 
             if (report is null || !report.Configured)
             {
-                embed.AddField(new DiscordEmbedField("Neste servidor",
-                    "Este servidor ainda não configurou cargos de verificação. O vínculo já vale em todo servidor " +
-                    "que usa o Sollarety.", false));
+                embed.AddField(new DiscordEmbedField("In this server",
+                    "This server hasn't set up verification roles yet. The link already applies in every server " +
+                    "that uses Sollarety.", false));
             }
             else
             {
                 if (report.Refusal is not null)
-                    embed.AddField(new DiscordEmbedField("Não liberado neste servidor",
-                        Embeds.Trim("A conta está vinculada, mas " + report.Refusal, 1024), false));
+                    embed.AddField(new DiscordEmbedField("Not approved in this server",
+                        Embeds.Trim("The account is linked, but " + report.Refusal, 1024), false));
 
-                embed.AddField(new DiscordEmbedField("Neste servidor", report.Describe(), false));
+                embed.AddField(new DiscordEmbedField("In this server", report.Describe(), false));
             }
 
             if (footer is not null)
@@ -261,7 +261,7 @@ namespace CommunityBot.Services.Roblox
                     await Hierarchy.TryGetMemberAsync(guild, userId) is { } member)
                 {
                     report = await VerificationService.ApplyAsync(client, guild, member, link,
-                        AuditReason.Automatic($"Verificação Roblox: vinculado a {link.robloxName} ({link.robloxId})"));
+                        AuditReason.Automatic($"Roblox verification: linked to {link.robloxName} ({link.robloxId})"));
                 }
 
                 return new Completion(Outcome.Linked, link, report, null);
@@ -296,7 +296,7 @@ namespace CommunityBot.Services.Roblox
                         if (result.Outcome == Outcome.Linked)
                         {
                             await EditQuietlyAsync(interaction,
-                                LinkedEmbed("Conta verificada", result.Link!, result.Report));
+                                LinkedEmbed("Account verified", result.Link!, result.Report));
                             return;
                         }
 
@@ -314,7 +314,7 @@ namespace CommunityBot.Services.Roblox
                 catch (OperationCanceledException)
                 {
                     // Tempo esgotado ou substituido por um /verify novo. O botao
-                    // "Ja autorizei" continua funcionando sem polling nenhum.
+                    // "I've authorized" continua funcionando sem polling nenhum.
                 }
                 catch (Exception ex)
                 {
@@ -344,7 +344,7 @@ namespace CommunityBot.Services.Roblox
         }
 
         /// <summary>
-        /// "Ja autorizei". Funciona mesmo sem polling ativo - depois de o bot
+        /// "I've authorized". Funciona mesmo sem polling ativo - depois de o bot
         /// reiniciar, por exemplo - porque tudo o que precisa vem do clique.
         /// </summary>
         private static async Task CheckAsync(DiscordClient client, DiscordInteraction interaction, DiscordGuild guild,
@@ -359,14 +359,14 @@ namespace CommunityBot.Services.Roblox
             {
                 StopPolling(member.Id);
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder()
-                    .AddEmbed(LinkedEmbed("Conta verificada", result.Link!, result.Report)), ModifyMode.Replace);
+                    .AddEmbed(LinkedEmbed("Account verified", result.Link!, result.Report)), ModifyMode.Replace);
                 return;
             }
 
             if (result.Outcome == Outcome.Failed)
             {
-                await FollowUpAsync(interaction, Embeds.Error("Não consegui conferir",
-                    $"Deu errado ao buscar o resultado: {result.Error}. Tente de novo em alguns segundos."));
+                await FollowUpAsync(interaction, Embeds.Error("Couldn't check",
+                    $"Something went wrong while fetching the result: {result.Error}. Try again in a few seconds."));
                 return;
             }
 
@@ -375,16 +375,16 @@ namespace CommunityBot.Services.Roblox
             {
                 StopPolling(member.Id);
                 var report = await VerificationService.ApplyAsync(client, guild, member, link,
-                    AuditReason.Automatic("Verificação Roblox: conferência pelo botão"));
+                    AuditReason.Automatic("Roblox verification: checked via button"));
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder()
-                    .AddEmbed(LinkedEmbed("Conta verificada", link, report)), ModifyMode.Replace);
+                    .AddEmbed(LinkedEmbed("Account verified", link, report)), ModifyMode.Replace);
                 return;
             }
 
-            await FollowUpAsync(interaction, Embeds.Info("Ainda não chegou nada",
-                "Termine os dois logins na página que abriu — primeiro o Discord, depois o Roblox — e clique aqui de novo.\n\n" +
-                "Se a página disse que deu certo e mesmo assim nada chega, confira se ela mostrou **esta** conta do " +
-                "Discord: o navegador pode estar logado em outra."));
+            await FollowUpAsync(interaction, Embeds.Info("Nothing received yet",
+                "Finish both logins on the page that opened — Discord first, then Roblox — and click here again.\n\n" +
+                "If the page said it worked and still nothing arrives, check that it showed **this** Discord " +
+                "account: your browser may be logged into a different one."));
         }
 
         private static async Task UnlinkAsync(DiscordClient client, DiscordInteraction interaction, DiscordGuild guild,
@@ -397,41 +397,41 @@ namespace CommunityBot.Services.Roblox
             if (removed is null)
             {
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Info("Nada a desfazer", "Sua conta do Discord já não estava vinculada a nenhuma conta Roblox.")),
+                    Embeds.Info("Nothing to undo", "Your Discord account was no longer linked to any Roblox account.")),
                     ModifyMode.Replace);
                 return;
             }
 
             Console.WriteLine($"[verificacao] {member.Id} desvinculou {removed.robloxName} ({removed.robloxId})");
 
-            var reason = AuditReason.Automatic("Verificação Roblox: /unverify");
+            var reason = AuditReason.Automatic("Roblox verification: /unverify");
             var report = await VerificationService.ApplyAsync(client, guild, member, null, reason);
             await VerificationService.ClearNicknameIfOursAsync(client, guild, member, removed, reason, report);
 
             var embed = new DiscordEmbedBuilder()
-                .WithTitle("Conta desvinculada")
+                .WithTitle("Account unlinked")
                 .WithColor(DiscordColor.SpringGreen)
-                .WithDescription($"{Describe(removed)} não está mais ligada à sua conta do Discord, em nenhum servidor.\n\n" +
-                                 "Nos outros servidores, os cargos de verificação saem no próximo `/update`.");
+                .WithDescription($"{Describe(removed)} is no longer linked to your Discord account, in any server.\n\n" +
+                                 "In other servers, verification roles are removed on the next `/update`.");
 
             if (report.Configured)
-                embed.AddField(new DiscordEmbedField("Neste servidor", report.Describe(), false));
+                embed.AddField(new DiscordEmbedField("In this server", report.Describe(), false));
 
             await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed), ModifyMode.Replace);
         }
 
         private static DiscordEmbed PromptEmbed() =>
             new DiscordEmbedBuilder()
-                .WithTitle("Verificar conta Roblox")
+                .WithTitle("Verify your Roblox account")
                 .WithColor(DiscordColor.Blurple)
                 .WithDescription(
-                    "1. Clique em **Abrir verificação**. Entre com **esta mesma conta do Discord** e, em seguida, " +
-                    "com a sua conta Roblox.\n" +
-                    "2. Volte para cá. Eu confiro sozinho a cada poucos segundos durante 10 minutos; se nada mudar, " +
-                    "clique em **Já autorizei**.\n\n" +
-                    "O login é o oficial do Roblox: a sua senha não passa pelo bot. Fica guardado só o id, o nome e a " +
-                    "data de criação da conta Roblox, até você rodar `/unverify`.")
-                .WithFooter("O Roblox só deixa contas de 13 anos ou mais autorizarem aplicativos.")
+                    "1. Click **Open verification**. Sign in with **this same Discord account**, then " +
+                    "with your Roblox account.\n" +
+                    "2. Come back here. I'll check automatically every few seconds for 10 minutes; if nothing changes, " +
+                    "click **I've authorized**.\n\n" +
+                    "The login is Roblox's official one: your password never goes through the bot. Only the Roblox " +
+                    "account's id, name and creation date are stored, until you run `/unverify`.")
+                .WithFooter("Roblox only lets accounts aged 13 or older authorize apps.")
                 .Build();
 
         private static async Task EditQuietlyAsync(DiscordInteraction interaction, DiscordEmbed embed)
@@ -465,12 +465,12 @@ namespace CommunityBot.Services.Roblox
             try
             {
                 await interaction.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
-                    new DiscordInteractionResponseBuilder().AddEmbed(Embeds.Error("Falha", message)).AsEphemeral());
+                    new DiscordInteractionResponseBuilder().AddEmbed(Embeds.Error("Error", message)).AsEphemeral());
             }
             catch
             {
                 // Ja tinha respondido (defer): o follow-up e o que resta.
-                await FollowUpAsync(interaction, Embeds.Error("Falha", message));
+                await FollowUpAsync(interaction, Embeds.Error("Error", message));
             }
         }
     }

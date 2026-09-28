@@ -20,7 +20,7 @@ namespace CommunityBot.commands
     /// com o bot em mais de um servidor, o log de moderacao de um podia cair no
     /// canal de outro.
     ///
-    /// Manage Server e o portao, mesmo criterio do /ticket-painel. O dono sempre
+    /// Manage Server e o portao, mesmo criterio do /ticket-panel. O dono sempre
     /// a tem e pode delegar sem entregar a conta.
     ///
     /// Cada subcomando mexe em UMA chave e tem UMA opcao opcional, onde omitir
@@ -28,12 +28,12 @@ namespace CommunityBot.commands
     /// curto e ambiguo: nao daria para distinguir "nao mexa nisso" de "limpe
     /// isso".
     /// </summary>
-    [SlashCommandGroup("config", "Configura o bot neste servidor", (long)Permissions.ManageGuild)]
+    [SlashCommandGroup("config", "Configures the bot for this server", (long)Permissions.ManageGuild)]
     [ApplicationCommandRequireGuild]
     [ApplicationCommandRequireUserPermissions(Permissions.ManageGuild)]
     internal class Config : ApplicationCommandsModule
     {
-        [SlashCommand("ver", "Mostra a configuração atual deste servidor")]
+        [SlashCommand("view", "Shows this server's current configuration")]
         public async Task ShowCommand(InteractionContext ctx)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
@@ -43,95 +43,95 @@ namespace CommunityBot.commands
             var settings = GuildSettingsStore.For(guild.Id);
 
             var embed = new DiscordEmbedBuilder()
-                .WithTitle($"Configuração de {guild.Name}")
+                .WithTitle($"Configuration for {guild.Name}")
                 .WithColor(DiscordColor.Blurple)
-                .AddField(new DiscordEmbedField("Log de moderação",
-                    Describe(guild, settings?.moderationLogChannelId, "`/config log-moderacao`"), false))
-                .AddField(new DiscordEmbedField("Softban automático",
+                .AddField(new DiscordEmbedField("Moderation log",
+                    Describe(guild, settings?.moderationLogChannelId, "`/config mod-log`"), false))
+                .AddField(new DiscordEmbedField("Auto-softban",
                     Describe(guild, settings?.autoSoftbanChannelId, "`/config auto-softban`"), false))
-                .AddField(new DiscordEmbedField("Tickets — categoria",
-                    Describe(guild, settings?.ticketCategoryId, "`/config tickets-categoria`"), true))
-                .AddField(new DiscordEmbedField("Tickets — cargo da equipe",
+                .AddField(new DiscordEmbedField("Tickets — category",
+                    Describe(guild, settings?.ticketCategoryId, "`/config tickets-category`"), true))
+                .AddField(new DiscordEmbedField("Tickets — staff role",
                     settings?.ticketStaffRoleId is { } r && guild.GetRole(r) is { } role
                         ? role.Mention
                         : settings?.ticketStaffRoleId is not null
-                            ? $"⚠️ cargo `{settings.ticketStaffRoleId}` não existe mais"
-                            : "— *(`/config tickets-cargo`)*", true))
-                .AddField(new DiscordEmbedField("Tickets — canal de log",
+                            ? $"⚠️ role `{settings.ticketStaffRoleId}` no longer exists"
+                            : "— *(`/config tickets-role`)*", true))
+                .AddField(new DiscordEmbedField("Tickets — log channel",
                     Describe(guild, settings?.ticketLogChannelId, "`/config tickets-log`"), true))
-                .AddField(new DiscordEmbedField("Verificação — cargo",
-                    DescribeRole(guild, settings?.verifiedRoleId, "`/config verificacao-cargo`"), true))
-                .AddField(new DiscordEmbedField("Verificação — não verificado",
-                    DescribeRole(guild, settings?.unverifiedRoleId, "`/config verificacao-nao-verificado`"), true))
-                .AddField(new DiscordEmbedField("Verificação — apelido",
+                .AddField(new DiscordEmbedField("Verification — role",
+                    DescribeRole(guild, settings?.verifiedRoleId, "`/config verify-role`"), true))
+                .AddField(new DiscordEmbedField("Verification — unverified",
+                    DescribeRole(guild, settings?.unverifiedRoleId, "`/config verify-unverified-role`"), true))
+                .AddField(new DiscordEmbedField("Verification — nickname",
                     NicknameFormats.Describe(settings?.nicknameFormat), true))
-                .AddField(new DiscordEmbedField("Verificação — idade mínima",
-                    settings?.minAccountAgeDays is > 0 and var days ? $"{days} dia(s)" : "desligada", true))
-                .AddField(new DiscordEmbedField("Binds de grupo",
-                    settings?.groupBinds is { Count: > 0 } binds ? $"{binds.Count} (`/bind listar`)" : "— *(`/bind adicionar`)*", true));
+                .AddField(new DiscordEmbedField("Verification — minimum age",
+                    settings?.minAccountAgeDays is > 0 and var days ? $"{days} day(s)" : "off", true))
+                .AddField(new DiscordEmbedField("Group binds",
+                    settings?.groupBinds is { Count: > 0 } binds ? $"{binds.Count} (`/bind list`)" : "— *(`/bind add`)*", true));
 
             var verifyReady = (await VerificationFlow.ReadSettingsAsync()).IsConfigured;
             var pending = Pending(guild, settings, verifyReady);
             if (pending.Count > 0)
-                embed.AddField(new DiscordEmbedField("Falta para funcionar",
+                embed.AddField(new DiscordEmbedField("Still missing",
                     string.Join("\n", pending.Select(p => $"• {p}")), false));
 
             if (settings?.updatedAtUtc is { } when)
-                embed.WithFooter($"Última alteração por {settings.updatedById} em {when:yyyy-MM-dd HH:mm} UTC");
+                embed.WithFooter($"Last changed by {settings.updatedById} on {when:yyyy-MM-dd HH:mm} UTC");
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("log-moderacao", "Canal que recebe um registro por ação de moderação")]
+        [SlashCommand("mod-log", "Channel that gets a record of every moderation action")]
         public Task ModLogCommand(
             InteractionContext ctx,
             [ChannelTypes(ChannelType.Text, ChannelType.News)]
-            [Option("canal", "Deixe vazio para desligar o registro")] DiscordChannel? canal = null) =>
+            [Option("channel", "Leave empty to turn logging off")] DiscordChannel? canal = null) =>
             ApplyAsync(ctx, canal,
                 needs: Permissions.SendMessages | Permissions.EmbedLinks,
                 assign: (s, v) => s.moderationLogChannelId = v,
-                onSet: c => Embeds.Ok("Log de moderação ligado",
-                    $"As ações de moderação passam a ser registradas em {c.Mention}."),
-                onClear: () => Embeds.Ok("Log de moderação desligado",
-                    "Nada mais será registrado além do Audit Log do próprio Discord."));
+                onSet: c => Embeds.Ok("Moderation log on",
+                    $"Moderation actions will now be logged in {c.Mention}."),
+                onClear: () => Embeds.Ok("Moderation log off",
+                    "Nothing will be logged beyond Discord's own Audit Log."));
 
-        [SlashCommand("auto-softban", "Canal-armadilha: quem escrever nele leva softban automático")]
+        [SlashCommand("auto-softban", "Trap channel: anyone who posts in it is softbanned automatically")]
         public Task AutoSoftbanCommand(
             InteractionContext ctx,
-            [Option("canal", "Deixe vazio para desarmar a armadilha")] DiscordChannel? canal = null) =>
+            [Option("channel", "Leave empty to disarm the trap")] DiscordChannel? canal = null) =>
             ApplyAsync(ctx, canal,
                 needs: Permissions.AccessChannels,
                 assign: (s, v) => s.autoSoftbanChannelId = v,
                 // Este comando arma um recurso que bane sozinho. A resposta diz
                 // exatamente o que vai acontecer, em vez de um "ok" de uma linha.
-                onSet: c => Embeds.Ok("Armadilha armada",
-                    $"**Qualquer mensagem em {c.Mention} passa a render um softban automático** — " +
-                    "banimento seguido de desbanimento, que apaga os últimos 7 dias da pessoa e a deixa " +
-                    "livre para voltar por convite.\n\n" +
-                    "Ficam de fora bots e webhooks, mensagens de sistema, quem tem Ban Members, " +
-                    "Gerenciar Servidor ou Administrador, o dono, e quem estiver acima do meu cargo. " +
-                    "Publicações de fórum contam, porque são threads filhas do canal.\n\n" +
-                    "Passando de 5 softbans em 60 segundos o vigia se desarma sozinho até o bot reiniciar."),
-                onClear: () => Embeds.Ok("Armadilha desarmada",
-                    "Ninguém mais será punido automaticamente por escrever em canal nenhum."));
+                onSet: c => Embeds.Ok("Trap armed",
+                    $"**Any message in {c.Mention} now results in an automatic softban** — " +
+                    "a ban followed by an unban, which deletes the person's last 7 days of messages and leaves them " +
+                    "free to come back with an invite.\n\n" +
+                    "Exempt: bots and webhooks, system messages, anyone with Ban Members, " +
+                    "Manage Server or Administrator, the owner, and anyone above my role. " +
+                    "Forum posts count, since they are threads inside the channel.\n\n" +
+                    "After more than 5 softbans in 60 seconds, the watcher disarms itself until the bot restarts."),
+                onClear: () => Embeds.Ok("Trap disarmed",
+                    "No one will be punished automatically for posting in any channel anymore."));
 
-        [SlashCommand("tickets-categoria", "Categoria onde os canais de ticket são criados")]
+        [SlashCommand("tickets-category", "Category where ticket channels are created")]
         public Task TicketCategoryCommand(
             InteractionContext ctx,
             [ChannelTypes(ChannelType.Category)]
-            [Option("categoria", "Deixe vazio para desligar os tickets")] DiscordChannel? categoria = null) =>
+            [Option("category", "Leave empty to turn tickets off")] DiscordChannel? categoria = null) =>
             ApplyAsync(ctx, categoria,
                 needs: Permissions.None,
                 assign: (s, v) => s.ticketCategoryId = v,
-                onSet: c => Embeds.Ok("Categoria dos tickets definida",
-                    $"Os canais de ticket nascem em **{c.Name}**. Confira o resto com `/config ver`."),
-                onClear: () => Embeds.Ok("Tickets desligados",
-                    "Sem categoria não há onde criar os canais, então o `/ticket` passa a recusar."));
+                onSet: c => Embeds.Ok("Ticket category set",
+                    $"Ticket channels will be created in **{c.Name}**. Check the rest with `/config view`."),
+                onClear: () => Embeds.Ok("Tickets off",
+                    "Without a category there is nowhere to create the channels, so `/ticket` will refuse."));
 
-        [SlashCommand("tickets-cargo", "Cargo da equipe que enxerga todos os tickets")]
+        [SlashCommand("tickets-role", "Staff role that can see every ticket")]
         public async Task TicketRoleCommand(
             InteractionContext ctx,
-            [Option("cargo", "Deixe vazio para desligar os tickets")] DiscordRole? cargo = null)
+            [Option("role", "Leave empty to turn tickets off")] DiscordRole? cargo = null)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -142,75 +142,75 @@ namespace CommunityBot.commands
             if (cargo is null)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Ok("Tickets desligados",
-                        "Sem cargo da equipe não há a quem dar acesso, então o `/ticket` passa a recusar.")));
+                    Embeds.Ok("Tickets off",
+                        "Without a staff role there is no one to give access to, so `/ticket` will refuse.")));
                 return;
             }
 
             var warning = cargo.IsMentionable
                 ? string.Empty
-                : "\n\n⚠️ Esse cargo **não é mencionável**, então a equipe não recebe notificação quando " +
-                  "um ticket abre — a menção sai como texto inerte.";
+                : "\n\n⚠️ This role **is not mentionable**, so staff won't be notified when " +
+                  "a ticket opens — the mention shows up as plain text.";
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                Embeds.Ok("Cargo da equipe definido",
-                    $"{cargo.Mention} passa a enxergar todos os tickets deste servidor.{warning}")));
+                Embeds.Ok("Staff role set",
+                    $"{cargo.Mention} can now see every ticket in this server.{warning}")));
         }
 
-        [SlashCommand("tickets-log", "Canal que recebe o transcript quando um ticket fecha")]
+        [SlashCommand("tickets-log", "Channel that receives the transcript when a ticket closes")]
         public Task TicketLogCommand(
             InteractionContext ctx,
             [ChannelTypes(ChannelType.Text, ChannelType.News)]
-            [Option("canal", "Deixe vazio para parar de arquivar")] DiscordChannel? canal = null) =>
+            [Option("channel", "Leave empty to stop archiving")] DiscordChannel? canal = null) =>
             ApplyAsync(ctx, canal,
                 // AttachFiles porque o transcript e um anexo: sem ela o
                 // fechamento falha e o canal do ticket fica de pe, e descobrir
                 // isso no primeiro fechamento e tarde demais.
                 needs: Permissions.SendMessages | Permissions.EmbedLinks | Permissions.AttachFiles,
                 assign: (s, v) => s.ticketLogChannelId = v,
-                onSet: c => Embeds.Ok("Log de tickets definido",
-                    $"O transcript de cada ticket fechado vai para {c.Mention}, e só então o canal é apagado."),
-                onClear: () => Embeds.Ok("Log de tickets desligado",
-                    "Sem canal de log não há onde arquivar, então fechar um ticket passa a **trancar** o " +
-                    "canal em vez de apagá-lo — a conversa não se perde sem cópia."));
+                onSet: c => Embeds.Ok("Ticket log set",
+                    $"Each closed ticket's transcript goes to {c.Mention}, and only then is the channel deleted."),
+                onClear: () => Embeds.Ok("Ticket log off",
+                    "Without a log channel there is nowhere to archive, so closing a ticket will **lock** the " +
+                    "channel instead of deleting it — the conversation is never lost without a copy."));
 
-        [SlashCommand("verificacao-cargo", "Cargo que quem verifica a conta Roblox recebe")]
+        [SlashCommand("verify-role", "Role given to members who verify their Roblox account")]
         public Task VerifiedRoleCommand(
             InteractionContext ctx,
-            [Option("cargo", "Deixe vazio para não dar cargo nenhum")] DiscordRole? cargo = null) =>
+            [Option("role", "Leave empty to give no role")] DiscordRole? cargo = null) =>
             ApplyRoleAsync(ctx, cargo,
                 conflict: s => s.unverifiedRoleId,
                 assign: (s, v) => s.verifiedRoleId = v,
-                onSet: r => Embeds.Ok("Cargo de verificado definido",
-                    $"Quem vincular a conta Roblox recebe {r.Mention} — na hora, pelo `/verify`, ou ao entrar, se já " +
-                    "tiver verificado em outro servidor. Quem já estava verificado antes recebe no próximo `/update`."),
-                onClear: () => Embeds.Ok("Cargo de verificado desligado",
-                    "Verificar a conta deixa de dar cargo. Quem já o tem continua com ele."));
+                onSet: r => Embeds.Ok("Verified role set",
+                    $"Anyone who links their Roblox account gets {r.Mention} — right away through `/verify`, or on joining if " +
+                    "they already verified in another server. Members who were verified before get it on their next `/update`."),
+                onClear: () => Embeds.Ok("Verified role off",
+                    "Verifying an account no longer gives a role. Members who already have it keep it."));
 
-        [SlashCommand("verificacao-nao-verificado", "Cargo de quem ainda não vinculou a conta Roblox")]
+        [SlashCommand("verify-unverified-role", "Role for members who haven't linked a Roblox account yet")]
         public Task UnverifiedRoleCommand(
             InteractionContext ctx,
-            [Option("cargo", "Deixe vazio para desligar")] DiscordRole? cargo = null) =>
+            [Option("role", "Leave empty to turn it off")] DiscordRole? cargo = null) =>
             ApplyRoleAsync(ctx, cargo,
                 conflict: s => s.verifiedRoleId,
                 assign: (s, v) => s.unverifiedRoleId = v,
                 // O cargo so e dado em eventos (entrada, /update, /unverify): o
                 // bot nao varre o servidor. A resposta diz isso para ninguem
                 // esperar ver os membros antigos com o cargo de uma hora para a outra.
-                onSet: r => Embeds.Ok("Cargo de não verificado definido",
-                    $"Quem **entrar** sem conta vinculada recebe {r.Mention}, e perde o cargo ao verificar. " +
-                    "Os membros que já estão no servidor não recebem sozinhos — só ao rodar `/update`."),
-                onClear: () => Embeds.Ok("Cargo de não verificado desligado",
-                    "Ninguém mais recebe cargo por não ter verificado. Quem já o tem continua com ele."));
+                onSet: r => Embeds.Ok("Unverified role set",
+                    $"Anyone who **joins** without a linked account gets {r.Mention}, and loses it on verifying. " +
+                    "Members already in the server don't get it automatically — only when they run `/update`."),
+                onClear: () => Embeds.Ok("Unverified role off",
+                    "No one gets a role for being unverified anymore. Members who already have it keep it."));
 
-        [SlashCommand("verificacao-apelido", "Como o bot escreve o apelido de quem verifica a conta Roblox")]
+        [SlashCommand("verify-nickname", "How the bot sets the nickname of members who verify their Roblox account")]
         public async Task NicknameCommand(
             InteractionContext ctx,
-            [Choice("Não mexer no apelido", NicknameFormats.None)]
-            [Choice("Nome de usuário do Roblox", NicknameFormats.Username)]
-            [Choice("Nome de exibição do Roblox", NicknameFormats.Display)]
-            [Choice("Exibição (@usuário), como no BloxLink", NicknameFormats.Smart)]
-            [Option("formato", "O que vai no apelido")] string formato)
+            [Choice("Don't change the nickname", NicknameFormats.None)]
+            [Choice("Roblox username", NicknameFormats.Username)]
+            [Choice("Roblox display name", NicknameFormats.Display)]
+            [Choice("Display name (@username), like BloxLink", NicknameFormats.Smart)]
+            [Option("format", "What goes in the nickname")] string formato)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -223,20 +223,20 @@ namespace CommunityBot.commands
 
             var warning = value is not null && ctx.Guild.CurrentMember is { } bot &&
                           (bot.Permissions & (Permissions.ManageNicknames | Permissions.Administrator)) == 0
-                ? "\n\n⚠️ Me falta **Gerenciar Apelidos**: sem ela, nenhum apelido vai mudar."
+                ? "\n\n⚠️ I'm missing **Manage Nicknames**: without it, no nickname will change."
                 : string.Empty;
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(value is null
-                ? Embeds.Ok("Apelido livre", "O bot não mexe mais no apelido de quem verifica.")
-                : Embeds.Ok("Formato de apelido definido",
-                    $"Quem verificar passa a se chamar pelo **{NicknameFormats.Describe(value)}**. O dono do servidor e " +
-                    $"quem está acima do meu cargo ficam de fora, por limite do Discord.{warning}")));
+                ? Embeds.Ok("Nicknames left alone", "The bot no longer changes the nickname of members who verify.")
+                : Embeds.Ok("Nickname format set",
+                    $"Members who verify will now be nicknamed with their **{NicknameFormats.Describe(value)}**. The server " +
+                    $"owner and anyone above my role are exempt, due to a Discord limitation.{warning}")));
         }
 
-        [SlashCommand("verificacao-idade-minima", "Recusa contas Roblox mais novas que isso, em dias")]
+        [SlashCommand("verify-min-age", "Rejects Roblox accounts younger than this, in days")]
         public async Task MinimumAgeCommand(
             InteractionContext ctx,
-            [Option("dias", "Idade mínima da conta Roblox, em dias. 0 desliga")] long dias)
+            [Option("days", "Minimum Roblox account age, in days. 0 turns it off")] long dias)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -244,17 +244,17 @@ namespace CommunityBot.commands
             if (dias is < 0 or > 3650)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Valor inválido", "A idade mínima vai de 0 (desligada) a 3650 dias.")));
+                    Embeds.Error("Invalid value", "The minimum age goes from 0 (off) to 3650 days.")));
                 return;
             }
 
             await GuildSettingsStore.Instance.SetAsync(ctx.Guild!.Id, ctx.User.Id, s => s.minAccountAgeDays = (int)dias);
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(dias == 0
-                ? Embeds.Ok("Filtro anti-alt desligado", "Qualquer conta Roblox vinculada passa a valer neste servidor.")
-                : Embeds.Ok("Filtro anti-alt ligado",
-                    $"Contas Roblox com menos de **{dias} dia(s)** continuam podendo se vincular, mas neste servidor " +
-                    "são tratadas como não verificadas: sem o cargo de verificado e sem os de grupo.")));
+                ? Embeds.Ok("Anti-alt filter off", "Any linked Roblox account now counts in this server.")
+                : Embeds.Ok("Anti-alt filter on",
+                    $"Roblox accounts younger than **{dias} day(s)** can still be linked, but in this server they " +
+                    "are treated as unverified: no verified role and no group roles.")));
         }
 
         /// <summary>
@@ -283,8 +283,8 @@ namespace CommunityBot.commands
                 if (channel.GuildId != ctx.Guild!.Id)
                 {
                     await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                        Embeds.Error("Canal de outro servidor",
-                            "Só dá para configurar canais deste servidor.")));
+                        Embeds.Error("Channel from another server",
+                            "Only channels from this server can be configured.")));
                     return;
                 }
 
@@ -294,9 +294,9 @@ namespace CommunityBot.commands
                     if (missing != Permissions.None)
                     {
                         await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                            Embeds.Error("Faltam permissões nesse canal",
-                                $"Não consigo usar {channel.Mention} porque me falta: **{missing}**.\n\n" +
-                                "Ajuste as permissões do canal e rode o comando de novo.")));
+                            Embeds.Error("Missing permissions in that channel",
+                                $"I can't use {channel.Mention} because I'm missing: **{missing}**.\n\n" +
+                                "Adjust the channel's permissions and run the command again.")));
                         return;
                     }
                 }
@@ -337,8 +337,8 @@ namespace CommunityBot.commands
                 // o mesmo cargo a cada evento.
                 if (GuildSettingsStore.For(ctx.Guild!.Id) is { } current && conflict(current) == role.Id)
                 {
-                    await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("Mesmo cargo",
-                        $"{role.Mention} já é o outro cargo da verificação. Verificado e não verificado precisam ser diferentes.")));
+                    await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("Same role",
+                        $"{role.Mention} is already the other verification role. Verified and unverified must be different roles.")));
                     return;
                 }
             }
@@ -356,7 +356,7 @@ namespace CommunityBot.commands
 
             return guild.GetRole(id) is { } role
                 ? role.Mention
-                : $"⚠️ cargo `{id}` não existe mais";
+                : $"⚠️ role `{id}` no longer exists";
         }
 
         private static string Describe(DiscordGuild guild, ulong? channelId, string command)
@@ -366,7 +366,7 @@ namespace CommunityBot.commands
 
             return guild.GetChannel(id) is { } channel
                 ? channel.Mention
-                : $"⚠️ canal `{id}` não existe mais";
+                : $"⚠️ channel `{id}` no longer exists";
         }
 
         /// <summary>
@@ -379,40 +379,40 @@ namespace CommunityBot.commands
 
             var verification = VerificationService.IsConfigured(settings);
             if (verification && !verifyReady)
-                pending.Add("a verificação Roblox está configurada aqui, mas **quem administra o bot** ainda não a ligou: " +
-                            "o `/verify` responde que está indisponível");
+                pending.Add("Roblox verification is set up here, but **whoever runs the bot** hasn't turned it on yet: " +
+                            "`/verify` replies that it's unavailable");
 
             var hasCategory = settings?.ticketCategoryId is > 0;
             var hasRole = settings?.ticketStaffRoleId is > 0;
 
             if (hasCategory ^ hasRole)
-                pending.Add("os tickets precisam de **categoria e cargo** — só um dos dois não liga nada");
+                pending.Add("Tickets need **both a category and a role** — just one of them doesn't turn anything on");
 
             if (hasCategory && hasRole && settings?.ticketLogChannelId is not > 0)
-                pending.Add("sem canal de log de tickets, fechar um ticket **tranca** o canal em vez de apagar");
+                pending.Add("Without a ticket log channel, closing a ticket **locks** the channel instead of deleting it");
 
             if (settings?.autoSoftbanChannelId is > 0 && settings?.moderationLogChannelId is not > 0)
-                pending.Add("com a armadilha armada e sem log de moderação, o aviso de disjuntor desarmado " +
-                            "não chega a canal nenhum");
+                pending.Add("With the trap armed and no moderation log, the notice that the circuit breaker disarmed it " +
+                            "doesn't reach any channel");
 
             if (guild.CurrentMember is { } bot)
             {
                 if (hasCategory && (bot.Permissions & (Permissions.ManageChannels | Permissions.ManageRoles)) !=
                     (Permissions.ManageChannels | Permissions.ManageRoles))
-                    pending.Add("me faltam **Gerenciar Canais** e/ou **Gerenciar Cargos**, e sem elas não crio " +
-                                "o canal de um ticket");
+                    pending.Add("I'm missing **Manage Channels** and/or **Manage Roles**, and without them I can't create " +
+                                "a ticket channel");
 
                 if (settings?.autoSoftbanChannelId is > 0 && (bot.Permissions & Permissions.BanMembers) == 0)
-                    pending.Add("me falta **Banir Membros**, e sem ela todo softban automático vai falhar");
+                    pending.Add("I'm missing **Ban Members**, and without it every auto-softban will fail");
 
                 var usesRoles = settings is not null &&
                                 (settings.verifiedRoleId is > 0 || settings.unverifiedRoleId is > 0 || settings.groupBinds.Count > 0);
                 if (usesRoles && (bot.Permissions & (Permissions.ManageRoles | Permissions.Administrator)) == 0)
-                    pending.Add("me falta **Gerenciar Cargos**, e sem ela a verificação não dá nem tira cargo nenhum");
+                    pending.Add("I'm missing **Manage Roles**, and without it verification can't give or remove any role");
 
                 if (settings?.nicknameFormat is not (null or NicknameFormats.None) &&
                     (bot.Permissions & (Permissions.ManageNicknames | Permissions.Administrator)) == 0)
-                    pending.Add("me falta **Gerenciar Apelidos**, e sem ela o apelido de quem verifica não muda");
+                    pending.Add("I'm missing **Manage Nicknames**, and without it the nickname of members who verify won't change");
             }
 
             return pending;

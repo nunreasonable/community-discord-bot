@@ -20,7 +20,7 @@ namespace CommunityBot.commands
     /// ainda passa pela checagem de hierarquia de quem cria o bind - ver
     /// VerificationService.CheckAssignableRole.
     /// </summary>
-    [SlashCommandGroup("bind", "Cargos do Discord a partir de grupo e rank no Roblox",
+    [SlashCommandGroup("bind", "Discord roles based on Roblox group and rank",
         (long)(Permissions.ManageGuild | Permissions.ManageRoles))]
     [ApplicationCommandRequireGuild]
     [ApplicationCommandRequireUserPermissions(Permissions.ManageGuild | Permissions.ManageRoles)]
@@ -29,32 +29,32 @@ namespace CommunityBot.commands
         /// <summary>
         /// Cada bind custa, por pessoa verificada, zero chamadas extras ao Roblox
         /// (uma leitura de grupos serve a todos), mas a lista precisa caber num
-        /// embed do /bind listar. Cinquenta cabem com folga.
+        /// embed do /bind list. Cinquenta cabem com folga.
         /// </summary>
         private const int MaxBinds = 50;
 
-        [SlashCommand("adicionar", "Dá um cargo a quem está num grupo Roblox dentro de uma faixa de rank")]
+        [SlashCommand("add", "Gives a role to members of a Roblox group within a rank range")]
         public async Task AddCommand(
             InteractionContext ctx,
-            [Option("grupo", "ID do grupo no Roblox (o número na URL do grupo)")] long grupo,
-            [Option("cargo", "Cargo do Discord que o bind dá")] DiscordRole cargo,
-            [Option("rank_minimo", "Menor rank que ganha o cargo, de 0 a 255 (padrão 1: qualquer membro)")] long rankMinimo = 1,
-            [Option("rank_maximo", "Maior rank que ganha o cargo, de 0 a 255 (padrão 255)")] long rankMaximo = 255)
+            [Option("group", "Roblox group ID (the number in the group's URL)")] long grupo,
+            [Option("role", "Discord role the bind gives")] DiscordRole cargo,
+            [Option("min_rank", "Lowest rank that gets the role, 0 to 255 (default 1: any member)")] long rankMinimo = 1,
+            [Option("max_rank", "Highest rank that gets the role, 0 to 255 (default 255)")] long rankMaximo = 255)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
 
             if (grupo <= 0)
             {
-                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("Grupo inválido",
-                    "O ID do grupo é o número que aparece na URL dele, como em `roblox.com/communities/1234567/...`.")));
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("Invalid group",
+                    "The group ID is the number in its URL, as in `roblox.com/communities/1234567/...`.")));
                 return;
             }
 
             if (rankMinimo is < 0 or > 255 || rankMaximo is < 0 or > 255 || rankMinimo > rankMaximo)
             {
-                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("Faixa inválida",
-                    "Os ranks vão de 0 a 255, e o mínimo não pode passar do máximo. O rank 0 é quem está **fora** do grupo.")));
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("Invalid range",
+                    "Ranks go from 0 to 255, and the minimum can't be higher than the maximum. Rank 0 means being **outside** the group.")));
                 return;
             }
 
@@ -68,8 +68,8 @@ namespace CommunityBot.commands
             if (!group.Ok)
             {
                 await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(group.NotFound
-                    ? Embeds.Error("Grupo não encontrado", $"O Roblox diz que o grupo `{grupo}` não existe.")
-                    : Embeds.Error("Não consegui confirmar o grupo", $"{group.Error}. Tente de novo em alguns segundos.")));
+                    ? Embeds.Error("Group not found", $"Roblox says group `{grupo}` doesn't exist.")
+                    : Embeds.Error("Couldn't confirm the group", $"{group.Error}. Try again in a few seconds.")));
                 return;
             }
 
@@ -78,11 +78,11 @@ namespace CommunityBot.commands
                 var settings = edit.Get(ctx.Guild!.Id);
 
                 if (settings.groupBinds.Count >= MaxBinds)
-                    return (null, $"Este servidor já tem {MaxBinds} binds, o máximo. Remova algum com `/bind remover`.");
+                    return (null, $"This server already has {MaxBinds} binds, the maximum. Remove one with `/bind remove`.");
 
                 if (settings.groupBinds.Any(b => b.groupId == grupo && b.roleId == cargo.Id &&
                                                  b.minRank == rankMinimo && b.maxRank == rankMaximo))
-                    return (null, "Já existe um bind idêntico a esse.");
+                    return (null, "An identical bind already exists.");
 
                 string id;
                 do
@@ -112,20 +112,20 @@ namespace CommunityBot.commands
 
             if (bind is null)
             {
-                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("Bind não criado", error!)));
+                await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Error("Bind not created", error!)));
                 return;
             }
 
-            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Ok("Bind criado",
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(Embeds.Ok("Bind created",
                 $"{Describe(bind)}\n\n" +
-                "Vale para quem verificar ou entrar daqui em diante. Quem **já** está verificado recebe no próximo " +
-                "`/update` — a pessoa mesma pode rodá-lo, ou alguém com Gerenciar Cargos por ela.")));
+                "Applies to anyone who verifies or joins from now on. Members who are **already** verified get it on their next " +
+                "`/update` — they can run it themselves, or someone with Manage Roles can run it for them.")));
         }
 
-        [SlashCommand("remover", "Remove um bind pelo id que aparece no /bind listar")]
+        [SlashCommand("remove", "Removes a bind by the id shown in /bind list")]
         public async Task RemoveCommand(
             InteractionContext ctx,
-            [Option("id", "Id do bind")] string id)
+            [Option("id", "Bind id")] string id)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
@@ -146,21 +146,21 @@ namespace CommunityBot.commands
             });
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(removed is null
-                ? Embeds.Error("Bind não encontrado", $"Não há bind com o id `{Embeds.SafeTrim(id, 20)}` neste servidor. Veja `/bind listar`.")
-                : Embeds.Ok("Bind removido",
-                    $"{Describe(removed)}\n\nO bot para de dar esse cargo. Quem já o tem **continua com ele**: sem bind " +
-                    "apontando para o cargo, o bot deixa de mexer nele de vez, inclusive para tirar.")));
+                ? Embeds.Error("Bind not found", $"There's no bind with id `{Embeds.SafeTrim(id, 20)}` in this server. See `/bind list`.")
+                : Embeds.Ok("Bind removed",
+                    $"{Describe(removed)}\n\nThe bot stops giving this role. Members who have it **keep it**: with no bind " +
+                    "pointing to the role, the bot stops touching it entirely, including removing it.")));
         }
 
-        [SlashCommand("listar", "Lista os binds de grupo deste servidor")]
+        [SlashCommand("list", "Lists this server's group binds")]
         public async Task ListCommand(InteractionContext ctx)
         {
             var binds = GuildSettingsStore.For(ctx.Guild!.Id)?.groupBinds ?? new();
 
             var embed = binds.Count == 0
-                ? Embeds.Info("Nenhum bind", "Este servidor não tem binds de grupo. Crie um com `/bind adicionar`.")
+                ? Embeds.Info("No binds", "This server has no group binds. Create one with `/bind add`.")
                 : new DiscordEmbedBuilder()
-                    .WithTitle($"Binds de grupo ({binds.Count})")
+                    .WithTitle($"Group binds ({binds.Count})")
                     .WithColor(DiscordColor.Blurple)
                     .WithDescription(Embeds.Trim(string.Join("\n", binds.Select(b => $"`{b.id}` {Describe(b)}")), 4000))
                     .Build();
@@ -173,10 +173,10 @@ namespace CommunityBot.commands
         {
             var ranks = (bind.minRank, bind.maxRank) switch
             {
-                (1, 255) => "qualquer rank",
-                (0, 255) => "qualquer pessoa, até fora do grupo",
+                (1, 255) => "any rank",
+                (0, 255) => "anyone, even outside the group",
                 var (min, max) when min == max => $"rank {min}",
-                var (min, max) => $"rank {min}–{max}"
+                var (min, max) => $"ranks {min}–{max}"
             };
 
             return $"**{Embeds.Safe(bind.groupName)}** (`{bind.groupId}`), {ranks} → <@&{bind.roleId}>";

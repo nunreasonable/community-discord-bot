@@ -44,7 +44,7 @@ namespace CommunityBot.Services
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[tickets] falha ao tratar '{id}' de {e.User.Id}: {ex}");
-                    await TryFailAsync(interaction, "Algo quebrou ao processar essa ação. Avise quem administra o bot.");
+                    await TryFailAsync(interaction, "Something broke while processing this action. Let the bot's admin know.");
                 }
             });
 
@@ -63,7 +63,7 @@ namespace CommunityBot.Services
                 // meses pode carregar um id de um esquema antigo.
                 Console.WriteLine($"[tickets] custom id fora do formato: '{id}'");
                 await TryFailAsync(interaction,
-                    "Esse botão é de uma versão antiga do painel. Peça para republicá-lo.");
+                    "This button is from an old version of the panel. Ask for it to be reposted.");
                 return;
             }
 
@@ -77,7 +77,7 @@ namespace CommunityBot.Services
             // Hierarchy conta a historia.
             if (e.Guild is not { } guild || e.Member is not { } member)
             {
-                await TryFailAsync(interaction, "Isso só funciona dentro de um servidor.");
+                await TryFailAsync(interaction, "This only works inside a server.");
                 return;
             }
 
@@ -113,7 +113,7 @@ namespace CommunityBot.Services
                 default:
                     Console.WriteLine($"[tickets] acao desconhecida no custom id '{id}'");
                     await TryFailAsync(interaction,
-                        "Esse botão é de uma versão antiga do painel. Peça para republicá-lo.");
+                        "This button is from an old version of the panel. Ask for it to be reposted.");
                     return;
             }
         }
@@ -127,24 +127,24 @@ namespace CommunityBot.Services
             var type = TicketTypes.Find(typeKey);
             if (type is null)
             {
-                await RespondAsync(interaction, Embeds.Error("Tipo indisponível",
-                    "Esse tipo de ticket não existe mais. Avise quem administra o bot para republicar o painel."));
+                await RespondAsync(interaction, Embeds.Error("Type unavailable",
+                    "This ticket type no longer exists. Ask the bot's admin to repost the panel."));
                 return;
             }
 
             await interaction.CreateInteractionModalResponseAsync(new DiscordInteractionModalBuilder()
-                .WithTitle($"Abrir ticket — {type.Label}")
+                .WithTitle($"Open ticket — {type.Label}")
                 .WithCustomId($"{TicketService.Prefix}new:{type.Key}")
                 // ATENCAO A ORDEM: o construtor e (style, LABEL, CUSTOM ID, ...).
                 // O rotulo vem antes do id, e trocar os dois compila sem um
                 // pio - sao duas strings. O efeito seria o ReadModalValue nunca
                 // achar o campo, e todo ticket nascer sem assunto.
                 .AddTextComponent(new DiscordTextInputComponent(
-                    TextComponentStyle.Small, "Assunto", "assunto",
-                    "Em poucas palavras, do que se trata", 3, 200, true))
+                    TextComponentStyle.Small, "Subject", "assunto",
+                    "In a few words, what this is about", 3, 200, true))
                 .AddTextComponent(new DiscordTextInputComponent(
-                    TextComponentStyle.Paragraph, "Detalhes", "descricao",
-                    "Conte o que aconteceu, com o máximo de detalhe que puder", null, 1500, false)));
+                    TextComponentStyle.Paragraph, "Details", "descricao",
+                    "Tell us what happened, in as much detail as you can", null, 1500, false)));
         }
 
         private static async Task CreateFromModalAsync(DiscordClient client, DiscordGuild guild, DiscordMember member,
@@ -153,13 +153,13 @@ namespace CommunityBot.Services
             await interaction.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder().AsEphemeral());
 
-            var subject = ReadModalValue(interaction, "assunto") ?? "(sem assunto)";
+            var subject = ReadModalValue(interaction, "assunto") ?? "(no subject)";
             var description = ReadModalValue(interaction, "descricao");
 
             var (channel, error) = await TicketService.OpenAsync(client, guild, member, settings, typeKey, subject, description);
 
             await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                error ?? Embeds.Ok("Ticket aberto", $"Continue em {channel!.Mention}.")));
+                error ?? Embeds.Ok("Ticket opened", $"Continue in {channel!.Mention}.")));
         }
 
         // ------------------------------------------------------------------
@@ -171,8 +171,8 @@ namespace CommunityBot.Services
         {
             if (!TicketService.IsStaff(member, settings))
             {
-                await RespondAsync(interaction, Embeds.Error("Só para a equipe",
-                    "Assumir um ticket é coisa de quem vai atender."));
+                await RespondAsync(interaction, Embeds.Error("Staff only",
+                    "Only staff can claim a ticket."));
                 return;
             }
 
@@ -186,7 +186,7 @@ namespace CommunityBot.Services
              * fechamento pode estar segurando. Estourando o prazo, o
              * CreateResponseAsync lancava "Unknown interaction" e a pessoa via "a
              * aplicacao nao respondeu" - com o claim JA GRAVADO. Ela clicava de
-             * novo e ouvia "ja assumido".
+             * novo e ouvia "Already claimed".
              */
             await interaction.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
                 new DiscordInteractionResponseBuilder());
@@ -207,7 +207,7 @@ namespace CommunityBot.Services
                 // dentro do lock porque dois cliques simultaneos passariam os
                 // dois por uma checagem feita fora.
                 // Inclui o proprio: sem isto, reclicar reescrevia o arquivo
-                // inteiro e postava um segundo "Ticket assumido" identico.
+                // inteiro e postava um segundo "Ticket claimed" identico.
                 if (stored.claimedById is not null)
                     return (Ticket: stored, Taken: false);
 
@@ -219,8 +219,8 @@ namespace CommunityBot.Services
             if (claimed.Ticket is null)
             {
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Ticket desconhecido",
-                        "Não achei esse ticket no registro. Ele pode ter sido fechado.")));
+                    Embeds.Error("Unknown ticket",
+                        "I couldn't find this ticket in the records. It may have been closed.")));
                 return;
             }
 
@@ -228,13 +228,13 @@ namespace CommunityBot.Services
             {
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
                     claimed.Ticket.IsOpen
-                        ? Embeds.Info("Já assumido", $"<@{claimed.Ticket.claimedById}> já está cuidando deste ticket.")
-                        : Embeds.Error("Ticket fechado", "Este ticket já foi fechado.")));
+                        ? Embeds.Info("Already claimed", $"<@{claimed.Ticket.claimedById}> is already handling this ticket.")
+                        : Embeds.Error("Ticket closed", "This ticket has already been closed.")));
                 return;
             }
 
             await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                Embeds.Ok("Ticket assumido", $"{member.Mention} vai cuidar deste atendimento.")));
+                Embeds.Ok("Ticket claimed", $"{member.Mention} will handle this ticket.")));
         }
 
         // ------------------------------------------------------------------
@@ -246,11 +246,11 @@ namespace CommunityBot.Services
             // O modal e a confirmacao. Fechar apaga o canal, e um botao vermelho
             // que destroi a conversa com um clique so e cilada.
             await interaction.CreateInteractionModalResponseAsync(new DiscordInteractionModalBuilder()
-                .WithTitle("Fechar ticket")
+                .WithTitle("Close ticket")
                 .WithCustomId($"{TicketService.Prefix}closed:{ticketId}")
                 .AddTextComponent(new DiscordTextInputComponent(
-                    TextComponentStyle.Paragraph, "Motivo (opcional)", "motivo",
-                    "Como isso foi resolvido?", null, 500, false)));
+                    TextComponentStyle.Paragraph, "Reason (optional)", "motivo",
+                    "How was it resolved?", null, 500, false)));
         }
 
         private static async Task CloseFromModalAsync(DiscordClient client, DiscordGuild guild, DiscordMember member,
@@ -265,14 +265,14 @@ namespace CommunityBot.Services
             if (ticket is null || !ticket.IsOpen)
             {
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Ticket indisponível", "Esse ticket não existe mais ou já foi fechado.")));
+                    Embeds.Error("Ticket unavailable", "This ticket no longer exists or has already been closed.")));
                 return;
             }
 
             if (ticket.openerId != member.Id && !TicketService.IsStaff(member, settings))
             {
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Sem permissão", "Só quem abriu o ticket ou a equipe pode fechá-lo.")));
+                    Embeds.Error("No permission", "Only the person who opened the ticket or the staff can close it.")));
                 return;
             }
 
@@ -281,7 +281,7 @@ namespace CommunityBot.Services
             if (result.Outcome == CloseOutcome.KeptChannel)
             {
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Error("Fechado, mas não arquivado", result.Detail!)));
+                    Embeds.Error("Closed, but not archived", result.Detail!)));
                 return;
             }
 
@@ -291,7 +291,7 @@ namespace CommunityBot.Services
             try
             {
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
-                    Embeds.Ok("Ticket fechado", "A conversa foi arquivada no canal de log.")));
+                    Embeds.Ok("Ticket closed", "The conversation was archived in the log channel.")));
             }
             catch
             {
@@ -369,7 +369,7 @@ namespace CommunityBot.Services
             try
             {
                 await interaction.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
-                    new DiscordInteractionResponseBuilder().AddEmbed(Embeds.Error("Falha", message)).AsEphemeral());
+                    new DiscordInteractionResponseBuilder().AddEmbed(Embeds.Error("Error", message)).AsEphemeral());
             }
             catch
             {
@@ -377,7 +377,7 @@ namespace CommunityBot.Services
                 {
                     // Ja tinha deferido: editar e o unico caminho que resta.
                     await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder()
-                        .AddEmbed(Embeds.Error("Falha", message)));
+                        .AddEmbed(Embeds.Error("Error", message)));
                 }
                 catch (Exception ex)
                 {

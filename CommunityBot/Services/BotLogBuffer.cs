@@ -165,7 +165,7 @@ namespace CommunityBot.Services
                 // O disjuntor do vigia de canal desliga o softban automatico ate
                 // o restart. E a linha mais importante que aquele codigo produz e
                 // nao casava com nenhuma palavra daqui - ficava arquivada como
-                // INFO, invisivel justamente em `/logs nivel:erro`.
+                // INFO, invisivel justamente em `/logs level:erro`.
                 Has(text, "disjuntor"))
                 return LogLevelTag.Erro;
 
@@ -183,8 +183,8 @@ namespace CommunityBot.Services
         /// <summary>Nome curto do nivel, usado no /logs e na API.</summary>
         public static string LevelName(LogLevelTag level) => level switch
         {
-            LogLevelTag.Erro => "ERRO",
-            LogLevelTag.Aviso => "AVISO",
+            LogLevelTag.Erro => "ERROR",
+            LogLevelTag.Aviso => "WARN",
             _ => "INFO"
         };
 

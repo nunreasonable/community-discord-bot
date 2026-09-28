@@ -24,7 +24,7 @@ namespace CommunityBot.Services
         /// propria DEPOIS de ja terem respondido "sucesso" ao moderador, e fora
         /// de qualquer try. Se essa leitura falhasse (arquivo sendo reescrito,
         /// JSON invalido), a excecao chegava ao SlashCommandErrored, que edita a
-        /// MESMA resposta original - o moderador via "Falha no comando" numa
+        /// MESMA resposta original - o moderador via "Command failed" numa
         /// punicao que tinha sido aplicada. Trazendo a leitura para dentro deste
         /// metodo, ela passa a ser coberta pelo mesmo catch do resto.
         /// </summary>
@@ -62,7 +62,7 @@ namespace CommunityBot.Services
             DiscordUser moderator,
             string? reason,
             string? extra = null,
-            string noTargetLabel = "*toda a conversa do canal*")
+            string noTargetLabel = "*entire channel*")
         {
             try
             {
@@ -77,9 +77,9 @@ namespace CommunityBot.Services
         /// <summary>
         /// Aviso do proprio bot no canal de log - nao e o registro de uma
         /// punicao, e por isso nao passa pelo RecordAsync: la os campos sao
-        /// "Usuario" e "Moderador", e um alerta como o do disjuntor do vigia nao
+        /// "User" e "Moderator", e um alerta como o do disjuntor do vigia nao
         /// tem nem um nem outro. Forcar isso no molde de punicao produzia
-        /// "Usuario: *toda a conversa do canal*", que nao quer dizer nada aqui.
+        /// "User: *entire channel*", que nao quer dizer nada aqui.
         ///
         /// Vermelho pela mesma regra do resto do bot: e uma condicao que exige
         /// alguem olhar.
@@ -123,7 +123,7 @@ namespace CommunityBot.Services
             DiscordUser moderator,
             string? reason,
             string? extra = null,
-            string noTargetLabel = "*toda a conversa do canal*")
+            string noTargetLabel = "*entire channel*")
         {
             // O canal e o DAQUELE servidor. Antes era um id unico do processo, e
             // como o GetChannelAsync resolve id em qualquer servidor onde o bot
@@ -141,20 +141,20 @@ namespace CommunityBot.Services
                     return;
 
                 var embed = new DiscordEmbedBuilder()
-                    .WithTitle($"Moderação — {action}")
+                    .WithTitle($"Moderation — {action}")
                     .WithColor(DiscordColor.Orange)
                     .WithTimestamp(DateTimeOffset.UtcNow)
-                    .AddField(new DiscordEmbedField("Usuário",
+                    .AddField(new DiscordEmbedField("User",
                         target is null ? noTargetLabel : $"{target.Mention}\n`{target.Id}`", true))
-                    .AddField(new DiscordEmbedField("Moderador", $"{moderator.Mention}\n`{moderator.Id}`", true))
-                    .AddField(new DiscordEmbedField("Motivo",
-                        string.IsNullOrWhiteSpace(reason) ? "*não informado*" : Embeds.SafeTrim(reason, 1000), false));
+                    .AddField(new DiscordEmbedField("Moderator", $"{moderator.Mention}\n`{moderator.Id}`", true))
+                    .AddField(new DiscordEmbedField("Reason",
+                        string.IsNullOrWhiteSpace(reason) ? "*no reason given*" : Embeds.SafeTrim(reason, 1000), false));
 
                 if (target is not null)
                     embed.WithThumbnail(target.AvatarUrl);
 
                 if (!string.IsNullOrWhiteSpace(extra))
-                    embed.AddField(new DiscordEmbedField("Detalhes", Embeds.SafeTrim(extra, 1000), false));
+                    embed.AddField(new DiscordEmbedField("Details", Embeds.SafeTrim(extra, 1000), false));
 
                 await channel.SendMessageAsync(new DiscordMessageBuilder().AddEmbed(embed));
             }

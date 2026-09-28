@@ -36,6 +36,6 @@ namespace CommunityBot.Services
         /// cabecalho HTTP.
         /// </summary>
         private static string Clean(string? reason) =>
-            new((reason ?? "sem motivo informado").Select(c => char.IsControl(c) ? ' ' : c).ToArray());
+            new((reason ?? "no reason given").Select(c => char.IsControl(c) ? ' ' : c).ToArray());
     }
 }

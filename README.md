@@ -7,6 +7,12 @@ tee do console para um buffer de log, redes de segurança contra exceção não
 tratada, diagnóstico de gateway, leitura de config com cache e fila de mensagens.
 Os comandos são todos novos — os do ccore são do regimento e não vieram junto.
 
+**Idioma.** Tudo o que o bot mostra no Discord é em **inglês**: nomes e opções
+de comando, embeds, botões, modais, motivos do Audit Log e o log de moderação.
+Foi traduzido em 28/09/2026, e mensagem nova já entra em inglês. Os comentários do código e o log do
+console (o que o `/logs` mostra) continuam em português — o `BotLogBuffer`
+classifica a severidade pelas palavras "erro", "falha" e "aviso".
+
 > **Nome provisório.** `CommunityBot` é um marcador. Renomear depois significa
 > mexer na pasta, no `.csproj`, na unit do systemd e no texto das três páginas do
 > site.
@@ -46,7 +52,7 @@ LTS.
    Três delas costumam ser esquecidas, e cada uma quebra alguma coisa em
    silêncio: sem **View Channel** o gateway não entrega as mensagens do canal
    vigiado e o auto-softban nunca dispara; sem **Send Messages** o `/say` e o
-   `/ticket-painel` são recusados; e **Manage Channels + Manage Roles** são o que
+   `/ticket-panel` são recusados; e **Manage Channels + Manage Roles** são o que
    permite criar o canal de um ticket e escrever quem pode vê-lo.
 5. `dotnet run --project CommunityBot`
 
@@ -124,16 +130,16 @@ Toda entrada em servidor novo rende uma linha no log, com nome, id e tamanho.
 
 ### Configuração por servidor
 
-`/config ver` `/config log-moderacao` `/config auto-softban`
-`/config tickets-categoria` `/config tickets-cargo` `/config tickets-log`
-`/config verificacao-cargo` `/config verificacao-nao-verificado`
-`/config verificacao-apelido` `/config verificacao-idade-minima`
+`/config view` `/config mod-log` `/config auto-softban`
+`/config tickets-category` `/config tickets-role` `/config tickets-log`
+`/config verify-role` `/config verify-unverified-role`
+`/config verify-nickname` `/config verify-min-age`
 
 Cada subcomando mexe numa chave e tem uma opção opcional, onde **omitir a opção
 limpa o valor**. Um comando só com várias opções opcionais seria mais curto e
 ambíguo: não daria para distinguir "não mexa nisso" de "limpe isso".
 
-O `/config ver` mostra o estado atual **e o que falta** para cada recurso
+O `/config view` mostra o estado atual **e o que falta** para cada recurso
 funcionar — categoria de ticket sem cargo da equipe não liga nada, armadilha
 armada sem canal de log deixa o aviso de disjuntor sem destino, e assim por
 diante. Ao definir um canal, o bot confere na hora as permissões que vai precisar
@@ -230,7 +236,7 @@ que ninguém escreveu.
 sexto —, o vigia **daquele servidor** se desarma sozinho e não bane mais nada ali até
 o bot reiniciar. O disjuntor é por servidor: um raid num não desarma a armadilha
 dos outros. Ele
-grita no log local e, **se houver canal de log de moderação** (`/config log-moderacao`), também num embed
+grita no log local e, **se houver canal de log de moderação** (`/config mod-log`), também num embed
 lá; sem essa chave o desarme só aparece no log local, e o bot avisa disso na
 subida. Tentativa de ban que falha não conta — só punição aplicada. Os dois jeitos de isso dar muito errado — uma armadilha
 apontando para um canal movimentado e um raid de verdade — têm a mesma resposta
@@ -252,10 +258,10 @@ contra quem a levou — é um ato contra o registro de quem a aplicou, e por iss
 quem é comparado é o moderador que escreveu, não o advertido.
 
 ### Tickets
-`/ticket` `/ticket-fechar` `/ticket-add` `/ticket-remove` `/ticket-painel`
+`/ticket` `/ticket-close` `/ticket-add` `/ticket-remove` `/ticket-panel`
 
 Cada ticket é um canal de texto privado numa categoria, com quem abriu e o cargo
-da equipe dentro e o `@everyone` fora. Abre por três caminhos: o `/ticket-painel`
+da equipe dentro e o `@everyone` fora. Abre por três caminhos: o `/ticket-panel`
 publica uma mensagem com um botão por tipo (Dúvida, Denúncia, Parceria, Outro),
 o botão abre um formulário pedindo assunto e detalhes, e o `/ticket` faz o mesmo
 direto pela linha de comando quando o painel não está à mão.
@@ -287,13 +293,13 @@ de uma vez tudo o que está errado na configuração, em vez de fazer descobrir 
 problema por reinicialização.
 
 ### Verificação Roblox
-`/verify` `/unverify` `/update` `/whois` `/verify-painel`
-`/bind adicionar` `/bind remover` `/bind listar`
+`/verify` `/unverify` `/update` `/whois` `/verify-panel`
+`/bind add` `/bind remove` `/bind list`
 
 No molde do BloxLink, com os mesmos nomes de comando. O vínculo Discord→Roblox
 é **global**: quem verifica uma vez fica verificado em todo servidor que usa o
 bot, e ao entrar num servidor novo já recebe os cargos. Cada servidor decide o
-que a verificação dá, pelo `/config verificacao-*` e pelo `/bind`:
+que a verificação dá, pelo `/config verify-*` e pelo `/bind`:
 
 - **cargo de verificado** e **cargo de não verificado** (este é dado a quem
   entra sem vínculo e tirado ao verificar);

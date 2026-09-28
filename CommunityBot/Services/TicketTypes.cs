@@ -21,10 +21,10 @@ namespace CommunityBot.Services
     {
         public static readonly IReadOnlyList<TicketType> All = new[]
         {
-            new TicketType("duvida", "Dúvida", "❓", "duvida"),
-            new TicketType("denuncia", "Denúncia", "🚨", "denuncia"),
-            new TicketType("parceria", "Parceria", "🤝", "parceria"),
-            new TicketType("outro", "Outro", "📩", "outro")
+            new TicketType("duvida", "Question", "❓", "question"),
+            new TicketType("denuncia", "Report", "🚨", "report"),
+            new TicketType("parceria", "Partnership", "🤝", "partnership"),
+            new TicketType("outro", "Other", "📩", "other")
         };
 
         /// <summary>
@@ -39,7 +39,7 @@ namespace CommunityBot.Services
             All.FirstOrDefault(t => string.Equals(t.Key, key, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>Rotulo legivel para um tipo que talvez nao exista mais.</summary>
-        public static string Describe(string? key) => Find(key)?.Label ?? key ?? "(desconhecido)";
+        public static string Describe(string? key) => Find(key)?.Label ?? key ?? "(unknown)";
     }
 
     /// <summary>

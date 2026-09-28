@@ -82,10 +82,10 @@ namespace CommunityBot.Services
 
         /// <summary>Embed de recusa quando o sistema nao esta configurado.</summary>
         public static DiscordEmbed NotConfigured() =>
-            Embeds.Error("Tickets desligados",
-                "O sistema de tickets ainda não foi configurado neste servidor.\n\n" +
-                "Quem tem **Gerenciar Servidor** liga com `/config tickets-categoria` e " +
-                "`/config tickets-cargo`. O `/config ver` mostra o que falta.");
+            Embeds.Error("Tickets are off",
+                "The ticket system hasn't been set up in this server yet.\n\n" +
+                "Someone with **Manage Server** can turn it on with `/config tickets-category` and " +
+                "`/config tickets-role`. `/config view` shows what's missing.");
 
         /// <summary>Diz se o membro faz parte da equipe que atende tickets.</summary>
         public static bool IsStaff(DiscordMember member, TicketSettings settings) =>
@@ -112,19 +112,19 @@ namespace CommunityBot.Services
         {
             var type = TicketTypes.Find(typeKey);
             if (type is null)
-                return (null, Embeds.Error("Tipo inválido", "Esse tipo de ticket não existe mais."));
+                return (null, Embeds.Error("Invalid type", "This ticket type no longer exists."));
 
             if (guild.GetChannel(settings.CategoryId) is not { } category || category.Type != ChannelType.Category)
             {
-                return (null, Embeds.Error("Categoria inválida",
-                    "A categoria configurada não existe mais neste servidor. Refaça com `/config tickets-categoria`."));
+                return (null, Embeds.Error("Invalid category",
+                    "The configured category no longer exists in this server. Set it again with `/config tickets-category`."));
             }
 
             var staffRole = guild.GetRole(settings.StaffRoleId);
             if (staffRole is null)
             {
-                return (null, Embeds.Error("Cargo inválido",
-                    "O cargo da equipe configurado não existe mais neste servidor. Refaça com `/config tickets-cargo`."));
+                return (null, Embeds.Error("Invalid role",
+                    "The configured staff role no longer exists in this server. Set it again with `/config tickets-role`."));
             }
 
             // EveryoneRole e anulavel com o cache frio - o /lock ja trata o mesmo
@@ -132,8 +132,8 @@ namespace CommunityBot.Services
             // que nasce visivel para o servidor inteiro e pior que ticket nenhum.
             if (guild.EveryoneRole is not { } everyone)
             {
-                return (null, Embeds.Error("Cargo não encontrado",
-                    "Não consegui ler o cargo @everyone deste servidor agora. Tente de novo em alguns segundos."));
+                return (null, Embeds.Error("Role not found",
+                    "I couldn't read this server's @everyone role right now. Try again in a few seconds."));
             }
 
             // Reserva atomica: ou esta pessoa ja tem um ticket aberto, ou sai
@@ -144,7 +144,7 @@ namespace CommunityBot.Services
                 // ha uma janela. Se o processo morre ali (deploy, OOM) ou se a
                 // segunda escrita falha, sobra um registro aberto apontando para
                 // o canal 0 - e sem esta condicao ele bloquearia aquela pessoa de
-                // abrir ticket PARA SEMPRE, com um "continue em <#0>" que o
+                // abrir ticket PARA SEMPRE, com um "continue in <#0>" que o
                 // Discord mostra como canal apagado. Passados dois minutos, uma
                 // reserva sem canal deixa de valer.
                 var now = DateTimeOffset.UtcNow;
@@ -173,8 +173,8 @@ namespace CommunityBot.Services
 
             if (reserved.Existing is not null)
             {
-                return (null, Embeds.Error("Você já tem um ticket aberto",
-                    $"Continue em <#{reserved.Existing.channelId}>. Feche esse antes de abrir outro."));
+                return (null, Embeds.Error("You already have an open ticket",
+                    $"Continue in <#{reserved.Existing.channelId}>. Close it before opening another one."));
             }
 
             var created = reserved.Created!;
@@ -201,9 +201,9 @@ namespace CommunityBot.Services
                     category,
                     // O topic e o encosto para o caso de o tickets.json se perder:
                     // da para reconstruir a mao de quem e o canal.
-                    $"Ticket {created.id} — aberto por {opener.UsernameWithDiscriminator} ({opener.Id})",
+                    $"Ticket {created.id} — opened by {opener.UsernameWithDiscriminator} ({opener.Id})",
                     overwrites,
-                    reason: AuditReason.For(opener.UsernameWithDiscriminator, $"abertura de ticket {created.id}"));
+                    reason: AuditReason.For(opener.UsernameWithDiscriminator, $"opened ticket {created.id}"));
             }
             catch (Exception ex)
             {
@@ -223,7 +223,7 @@ namespace CommunityBot.Services
 
 
                 Console.WriteLine($"[tickets] falha ao criar o canal de {opener.Id}: {ex.Message}");
-                return (null, Embeds.Error("Falha ao abrir o ticket", Embeds.Trim(ex.Message, 500)));
+                return (null, Embeds.Error("Couldn't open the ticket", Embeds.Trim(ex.Message, 500)));
             }
 
             try
@@ -248,7 +248,7 @@ namespace CommunityBot.Services
 
                 try
                 {
-                    await channel.DeleteAsync(AuditReason.Automatic($"ticket {created.id}: falha ao registrar"));
+                    await channel.DeleteAsync(AuditReason.Automatic($"ticket {created.id}: failed to register"));
                 }
                 catch (Exception inner)
                 {
@@ -256,8 +256,8 @@ namespace CommunityBot.Services
                 }
 
                 await ForgetAsync(created.id);
-                return (null, Embeds.Error("Falha ao abrir o ticket",
-                    "Não consegui registrar o ticket. Tente de novo em alguns segundos."));
+                return (null, Embeds.Error("Couldn't open the ticket",
+                    "I couldn't register the ticket. Try again in a few seconds."));
             }
 
             try
@@ -271,9 +271,9 @@ namespace CommunityBot.Services
                 Console.WriteLine($"[tickets] canal {channel.Id} criado, mas a mensagem de abertura falhou: {ex.Message}");
             }
 
-            await LogAsync(client, guild, settings, Embeds.Info($"Ticket #{created.number:0000} aberto",
-                $"{opener.Mention} abriu um ticket de **{type.Label}** em {channel.Mention}.\n" +
-                $"**Assunto:** {Embeds.Safe(created.subject)}"));
+            await LogAsync(client, guild, settings, Embeds.Info($"Ticket #{created.number:0000} opened",
+                $"{opener.Mention} opened a **{type.Label}** ticket in {channel.Mention}.\n" +
+                $"**Subject:** {Embeds.Safe(created.subject)}"));
 
             return (channel, null);
         }
@@ -284,8 +284,8 @@ namespace CommunityBot.Services
             var embed = new DiscordEmbedBuilder()
                 .WithTitle($"{type.Emoji} Ticket #{ticket.number:0000} — {type.Label}")
                 .WithDescription(
-                    $"Aberto por {opener.Mention}.\n\n" +
-                    $"**Assunto:** {Embeds.Safe(ticket.subject)}" +
+                    $"Opened by {opener.Mention}.\n\n" +
+                    $"**Subject:** {Embeds.Safe(ticket.subject)}" +
                     (string.IsNullOrWhiteSpace(description)
                         ? string.Empty
                         : $"\n\n{Embeds.SafeTrim(description, 1500)}"))
@@ -299,9 +299,9 @@ namespace CommunityBot.Services
                 .WithContent(staffRole.Mention)
                 .AddEmbed(embed)
                 .AddComponents(
-                    new DiscordButtonComponent(ButtonStyle.Secondary, $"{Prefix}claim:{ticket.id}", "Assumir",
+                    new DiscordButtonComponent(ButtonStyle.Secondary, $"{Prefix}claim:{ticket.id}", "Claim",
                         emoji: new DiscordComponentEmoji("🙋")),
-                    new DiscordButtonComponent(ButtonStyle.Danger, $"{Prefix}close:{ticket.id}", "Fechar",
+                    new DiscordButtonComponent(ButtonStyle.Danger, $"{Prefix}close:{ticket.id}", "Close",
                         emoji: new DiscordComponentEmoji("🔒")));
         }
 
@@ -343,13 +343,13 @@ namespace CommunityBot.Services
                 Console.WriteLine($"[tickets] recusado: pedido de fechar o ticket {ticket.id} " +
                                   $"(canal {ticket.channelId}) veio do canal {channel.Id}.");
                 return new CloseResult(CloseOutcome.KeptChannel,
-                    "Este canal não é o do ticket informado.");
+                    "This channel doesn't belong to that ticket.");
             }
 
             // RESERVA, e nao fechamento. O resultado E conferido: descartar o bool
             // aqui deixava dois cliques simultaneos rodarem o fechamento inteiro
             // em paralelo - dois transcripts no log, e o segundo DeleteAsync
-            // batendo num canal ja apagado, o que virava um "nao consegui apagar"
+            // batendo num canal ja apagado, o que virava um "couldn't delete"
             // assustador para um fechamento que deu certo.
             var reserved = await TicketStore.Instance.UpdateAsync(edit =>
             {
@@ -367,7 +367,7 @@ namespace CommunityBot.Services
             if (!reserved)
             {
                 return new CloseResult(CloseOutcome.KeptChannel,
-                    "Este ticket já está sendo fechado por outra pessoa, ou já foi fechado.");
+                    "Someone else is already closing this ticket, or it has already been closed.");
             }
 
             if (settings.LogChannelId is null)
@@ -375,8 +375,8 @@ namespace CommunityBot.Services
                 await ReleaseClosingAsync(ticket.id);
                 await LockAsync(guild, channel, ticket, closedBy);
                 return new CloseResult(CloseOutcome.KeptChannel,
-                    "Não há canal de log de tickets configurado (`/config tickets-log`), então não havia onde arquivar a conversa. " +
-                    "O canal foi trancado e precisa ser apagado à mão.");
+                    "No ticket log channel is set up (`/config tickets-log`), so there was nowhere to archive the conversation. " +
+                    "The channel was locked and has to be deleted manually.");
             }
 
             string transcript;
@@ -391,29 +391,29 @@ namespace CommunityBot.Services
                 await ReleaseClosingAsync(ticket.id);
                 await LockAsync(guild, channel, ticket, closedBy);
                 return new CloseResult(CloseOutcome.KeptChannel,
-                    $"Não consegui ler as mensagens para arquivar: {Embeds.Trim(ex.Message, 300)}. " +
-                    "O canal foi trancado em vez de apagado.");
+                    $"I couldn't read the messages to archive them: {Embeds.Trim(ex.Message, 300)}. " +
+                    "The channel was locked instead of deleted.");
             }
 
             try
             {
                 var log = await client.GetChannelAsync(settings.LogChannelId.Value);
                 if (log is null || log.GuildId != guild.Id)
-                    throw new InvalidOperationException("o canal de log não é deste servidor");
+                    throw new InvalidOperationException("the log channel isn't in this server");
 
                 var embed = new DiscordEmbedBuilder()
-                    .WithTitle($"Ticket #{ticket.number:0000} fechado — {TicketTypes.Describe(ticket.type)}")
+                    .WithTitle($"Ticket #{ticket.number:0000} closed — {TicketTypes.Describe(ticket.type)}")
                     .WithColor(DiscordColor.Orange)
                     .WithTimestamp(DateTimeOffset.UtcNow)
-                    .AddField(new DiscordEmbedField("Aberto por", $"<@{ticket.openerId}>\n`{ticket.openerId}`", true))
-                    .AddField(new DiscordEmbedField("Fechado por", $"{closedBy.Mention}\n`{closedBy.Id}`", true))
-                    .AddField(new DiscordEmbedField("Assumido por",
-                        ticket.claimedById is { } c ? $"<@{c}>" : "*ninguém*", true))
-                    .AddField(new DiscordEmbedField("Assunto", Embeds.SafeTrim(ticket.subject, 900), false))
-                    .AddField(new DiscordEmbedField("Motivo do fechamento",
-                        string.IsNullOrWhiteSpace(reason) ? "*não informado*" : Embeds.SafeTrim(reason, 900), false))
-                    .AddField(new DiscordEmbedField("Duração", DescribeDuration(ticket), true))
-                    .AddField(new DiscordEmbedField("Mensagens", messageCount.ToString(CultureInfo.InvariantCulture), true))
+                    .AddField(new DiscordEmbedField("Opened by", $"<@{ticket.openerId}>\n`{ticket.openerId}`", true))
+                    .AddField(new DiscordEmbedField("Closed by", $"{closedBy.Mention}\n`{closedBy.Id}`", true))
+                    .AddField(new DiscordEmbedField("Claimed by",
+                        ticket.claimedById is { } c ? $"<@{c}>" : "*nobody*", true))
+                    .AddField(new DiscordEmbedField("Subject", Embeds.SafeTrim(ticket.subject, 900), false))
+                    .AddField(new DiscordEmbedField("Closing reason",
+                        string.IsNullOrWhiteSpace(reason) ? "*not provided*" : Embeds.SafeTrim(reason, 900), false))
+                    .AddField(new DiscordEmbedField("Duration", DescribeDuration(ticket), true))
+                    .AddField(new DiscordEmbedField("Messages", messageCount.ToString(CultureInfo.InvariantCulture), true))
                     .WithFooter($"id {ticket.id}");
 
                 using var stream = new MemoryStream(Encoding.UTF8.GetBytes(transcript));
@@ -427,8 +427,8 @@ namespace CommunityBot.Services
                 await ReleaseClosingAsync(ticket.id);
                 await LockAsync(guild, channel, ticket, closedBy);
                 return new CloseResult(CloseOutcome.KeptChannel,
-                    $"Não consegui enviar o transcript para o canal de log: {Embeds.Trim(ex.Message, 300)}. " +
-                    "O canal foi trancado em vez de apagado, para a conversa não se perder.");
+                    $"I couldn't send the transcript to the log channel: {Embeds.Trim(ex.Message, 300)}. " +
+                    "The channel was locked instead of deleted so the conversation isn't lost.");
             }
 
             // A conversa esta salva: agora sim o ticket esta fechado. Antes deste
@@ -450,7 +450,7 @@ namespace CommunityBot.Services
             try
             {
                 await channel.DeleteAsync(AuditReason.For(closedBy.UsernameWithDiscriminator,
-                    $"fechamento do ticket {ticket.id}"));
+                    $"closed ticket {ticket.id}"));
             }
             catch (Exception ex)
             {
@@ -461,8 +461,8 @@ namespace CommunityBot.Services
                 Console.WriteLine($"[tickets] transcript salvo, mas nao consegui apagar {channel.Id}: {ex.Message}");
                 await LockAsync(guild, channel, ticket, closedBy);
                 return new CloseResult(CloseOutcome.KeptChannel,
-                    "O transcript foi arquivado e o ticket está fechado, mas não consegui apagar o canal: " +
-                    $"{Embeds.Trim(ex.Message, 300)}. Apague-o à mão.");
+                    "The transcript was archived and the ticket is closed, but I couldn't delete the channel: " +
+                    $"{Embeds.Trim(ex.Message, 300)}. Delete it manually.");
             }
 
             return new CloseResult(CloseOutcome.Archived, null);
@@ -494,7 +494,7 @@ namespace CommunityBot.Services
         {
             try
             {
-                var reason = AuditReason.For(closedBy.UsernameWithDiscriminator, $"ticket {ticket.id} fechado");
+                var reason = AuditReason.For(closedBy.UsernameWithDiscriminator, $"ticket {ticket.id} closed");
                 var opener = await Hierarchy.TryGetMemberAsync(guild, ticket.openerId);
 
                 if (opener is not null)
@@ -566,12 +566,12 @@ namespace CommunityBot.Services
 
             var sb = new StringBuilder();
             sb.AppendLine($"Ticket #{ticket.number:0000} ({ticket.id}) — {TicketTypes.Describe(ticket.type)}");
-            sb.AppendLine($"Assunto: {ticket.subject}");
-            sb.AppendLine($"Aberto por: {ticket.openerId}");
-            sb.AppendLine($"Aberto em: {ticket.openedAtUtc:yyyy-MM-dd HH:mm:ss} UTC");
-            sb.AppendLine($"Fechado em: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+            sb.AppendLine($"Subject: {ticket.subject}");
+            sb.AppendLine($"Opened by: {ticket.openerId}");
+            sb.AppendLine($"Opened at: {ticket.openedAtUtc:yyyy-MM-dd HH:mm:ss} UTC");
+            sb.AppendLine($"Closed at: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
             if (truncated)
-                sb.AppendLine($"AVISO: só as {TranscriptLimit} mensagens mais recentes entraram neste arquivo.");
+                sb.AppendLine($"WARNING: only the {TranscriptLimit} most recent messages are included in this file.");
             sb.AppendLine(new string('-', 72));
             sb.AppendLine();
 
@@ -585,11 +585,11 @@ namespace CommunityBot.Services
                 // /channels/{id}/messages, e aquele intent so restringe o que o
                 // GATEWAY entrega. O conteudo vem completo aqui.
                 sb.AppendLine(string.IsNullOrWhiteSpace(m.Content)
-                    ? "    (sem conteúdo de texto)"
+                    ? "    (no text content)"
                     : "    " + m.Content.Replace("\n", "\n    "));
 
                 foreach (var a in m.Attachments)
-                    sb.AppendLine($"    [anexo] {a.Filename} — {a.Url}");
+                    sb.AppendLine($"    [attachment] {a.Filename} — {a.Url}");
 
                 foreach (var e in m.Embeds)
                     sb.AppendLine($"    [embed] {e.Title}");
@@ -654,8 +654,8 @@ namespace CommunityBot.Services
         ///   2. O processo morre entre criar o canal e gravar o id dele, e sobra
         ///      um registro aberto com channelId 0.
         ///
-        /// Nos dois casos a proxima tentativa daquela pessoa bate no "voce ja tem
-        /// um ticket aberto" apontando para um canal que nao existe, e a unica
+        /// Nos dois casos a proxima tentativa daquela pessoa bate no "You already
+        /// have an open ticket" apontando para um canal que nao existe, e a unica
         /// saida era editar o tickets.json a mao.
         ///
         /// Roda na subida, que e quando o cache de canais esta completo.
@@ -711,7 +711,7 @@ namespace CommunityBot.Services
                 .ToList();
 
             return lines.Count == 0
-                ? "[tickets] sistema de tickets desligado em todos os servidores (use /config tickets-categoria e /config tickets-cargo)."
+                ? "[tickets] sistema de tickets desligado em todos os servidores (use /config tickets-category e /config tickets-role)."
                 : string.Join("\n", lines);
         }
 
