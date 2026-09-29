@@ -9,10 +9,17 @@ Description=CommunityBot - bot de moderacao e diversao
 [Service]
 Type=simple
 
-# Espera o DNS resolver antes de subir, no maximo 60s. O prefixo "-" faz o
-# systemd ignorar o codigo de saida: se estourar o tempo, o bot sobe assim
-# mesmo e o retry do DisCatSharp assume.
-ExecStartPre=-/usr/bin/timeout 60 /usr/bin/bash -c 'until getent ahostsv4 discord.com >/dev/null 2>&1; do sleep 1; done'
+# Espera o Discord responder por HTTPS antes de subir (ate 60s), com o teste
+# antigo de DNS como fallback (mais ate 15s) - ver wait-for-discord.sh. O
+# prefixo "-" faz o systemd ignorar o codigo de saida: se estourar o tempo, o
+# bot sobe assim mesmo e o retry do DisCatSharp assume.
+#
+# Os tres prazos vao em escada: script (~80s) < timeout (85s) <
+# TimeoutStartSec (100s). O gate antigo esperava 60s, mas o systemd de usuario
+# corta o start em 45s por padrao: numa rede lenta ele matava a espera, marcava
+# o start como falho e so o Restart=on-failure salvava.
+ExecStartPre=-/usr/bin/timeout 85 /usr/bin/bash /home/daeese/daeesewrkspc/community-discord-bot/wait-for-discord.sh
+TimeoutStartSec=100
 
 # O bot resolve config/ e data/ a partir do diretorio do EXECUTAVEL
 # (AppContext.BaseDirectory), nao do cwd - entao esta linha nao e mais o que
