@@ -26,6 +26,28 @@
         "startUrl": "https://daeese.me/oauth/roblox/start",
         "resultUrl": "https://daeese.me/oauth/roblox/result",
         "apiSecret": ""
+    },
+
+    // MUSICA. Cada faixa e baixada inteira pelo yt-dlp para o /tmp PRIVADO da
+    // unit (PrivateTmp=yes), tocada e apagada logo em seguida - o bot nao
+    // guarda audio nenhum. Por isso os limites moram aqui: sao do disco e da
+    // banda desta maquina, nao de um servidor.
+    //
+    // ytDlpPath precisa ser ABSOLUTO quando o bot roda pelo systemd de usuario:
+    // o PATH dele e so /usr/local/bin:/usr/bin, e o binario standalone do
+    // yt-dlp fica em ~/.local/bin. jsRuntimes e o runtime JS que o YouTube
+    // passou a exigir; o yt-dlp so procura o Deno sozinho.
+    //
+    // Sem o yt-dlp o bot sobe igual, e o /play responde que a musica esta
+    // indisponivel. A linha [musica] do log na subida diz o que faltou.
+    "music": {
+        "ytDlpPath": "/home/USUARIO/.local/bin/yt-dlp",
+        "ffmpegPath": "ffmpeg",
+        "jsRuntimes": "node",
+        "maxTrackMinutes": 15,
+        "maxQueueLength": 50,
+        "maxFileSizeMB": 60,
+        "idleLeaveMinutes": 2
     }
 
     // O RESTO DA CONFIGURACAO NAO MORA MAIS AQUI.

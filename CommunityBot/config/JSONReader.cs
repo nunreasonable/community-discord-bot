@@ -17,6 +17,10 @@ namespace CommunityBot.config
 
         /// <summary>Nunca nulo: sem a secao no arquivo, valem os padroes, que deixam o /verify desligado.</summary>
         public RobloxVerifySettings robloxVerify { get; private set; } = new();
+
+        /// <summary>Nunca nulo: sem a secao no arquivo, valem os padroes de MusicSettings.</summary>
+        public MusicSettings music { get; private set; } = new();
+
         // LEGADO. Estas seis chaves saíram do arquivo e viraram configuracao por
         // servidor, escrita pelo /config. Continuam sendo lidas para a migracao
         // unica do LegacyConfigMigration, e nada mais as consulta.
@@ -57,6 +61,7 @@ namespace CommunityBot.config
             token = data?.token;
             guildIds = data?.guildIds;
             robloxVerify = data?.robloxVerify ?? new RobloxVerifySettings();
+            music = data?.music ?? new MusicSettings();
             moderationLogChannelId = data?.moderationLogChannelId;
             autoSoftbanGuildId = data?.autoSoftbanGuildId;
             autoSoftbanChannelId = data?.autoSoftbanChannelId;
@@ -129,6 +134,9 @@ namespace CommunityBot.config
         /// <summary>Ligacao com o Worker de verificacao Roblox. Ver RobloxVerifySettings.</summary>
         public RobloxVerifySettings? robloxVerify { get; set; }
 
+        /// <summary>Caminho do yt-dlp e limites da musica. Ver MusicSettings.</summary>
+        public MusicSettings? music { get; set; }
+
         /// <summary>
         /// LEGADO, so para a migracao. Ver LegacyConfigMigration: estas seis
         /// chaves viraram configuracao por servidor e hoje se definem pelo
@@ -194,5 +202,46 @@ namespace CommunityBot.config
             !string.IsNullOrWhiteSpace(apiSecret) &&
             Uri.TryCreate(startUrl, UriKind.Absolute, out var start) && start.Scheme == Uri.UriSchemeHttps &&
             Uri.TryCreate(resultUrl, UriKind.Absolute, out var result) && result.Scheme == Uri.UriSchemeHttps;
+    }
+
+    /// <summary>
+    /// Musica: onde esta o yt-dlp e ate onde o bot aceita ir.
+    ///
+    /// Fica na INSTALACAO, e nao por servidor, porque todos os limites aqui sao
+    /// do disco e da banda DESTA maquina - cada faixa e baixada inteira antes de
+    /// tocar. Um servidor nao tem como saber quanto a maquina aguenta.
+    /// </summary>
+    internal sealed class MusicSettings
+    {
+        /// <summary>
+        /// Caminho do executavel. Absoluto na pratica: o PATH do systemd de
+        /// usuario e so /usr/local/bin:/usr/bin, e o binario standalone mora em
+        /// ~/.local/bin.
+        /// </summary>
+        public string ytDlpPath { get; set; } = "yt-dlp";
+
+        public string ffmpegPath { get; set; } = "ffmpeg";
+
+        /// <summary>
+        /// Valor do --js-runtimes do yt-dlp. O YouTube exige um runtime JS desde
+        /// o fim de 2025; o yt-dlp so liga o Deno sozinho, e o que existe nesta
+        /// maquina e o node.
+        /// </summary>
+        public string jsRuntimes { get; set; } = "node";
+
+        public int maxTrackMinutes { get; set; } = 15;
+        public int maxQueueLength { get; set; } = 50;
+        public int maxFileSizeMB { get; set; } = 60;
+
+        /// <summary>Quanto o bot espera com a fila vazia, ou sozinho no canal, antes de sair.</summary>
+        public int idleLeaveMinutes { get; set; } = 2;
+
+        // Os limites passam por um piso e um teto aqui, e nao onde sao usados:
+        // um zero ou negativo digitado no config viraria "nenhuma faixa cabe" ou
+        // "sai do canal na hora", sem nada no log dizendo por que.
+        public TimeSpan MaxTrackLength => TimeSpan.FromMinutes(Math.Clamp(maxTrackMinutes, 1, 180));
+        public int MaxQueue => Math.Clamp(maxQueueLength, 1, 500);
+        public int MaxFileSizeMegabytes => Math.Clamp(maxFileSizeMB, 5, 1024);
+        public TimeSpan IdleLeave => TimeSpan.FromMinutes(Math.Clamp(idleLeaveMinutes, 1, 60));
     }
 }

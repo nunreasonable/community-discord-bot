@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using CommunityBot.commands;
 using CommunityBot.config;
 using CommunityBot.Services;
+using CommunityBot.Services.Fun;
+using CommunityBot.Services.Music;
 using CommunityBot.Services.Roblox;
 using DisCatSharp;
 using DisCatSharp.ApplicationCommands;
@@ -18,6 +20,7 @@ using Newtonsoft.Json;
 using DisCatSharp.Interactivity;
 using DisCatSharp.Interactivity.Enums;
 using DisCatSharp.Interactivity.Extensions;
+using DisCatSharp.Voice;
 using Microsoft.Extensions.Logging;
 
 namespace CommunityBot
@@ -71,7 +74,13 @@ namespace CommunityBot
                 // ONDE, nunca o texto - sem esse intent o Content chega vazio, e
                 // aqui isso nao faz falta nenhuma. Pedir um intent privilegiado a
                 // toa e superficie de risco de graca.
-                Intents = DiscordIntents.Guilds | DiscordIntents.GuildMembers | DiscordIntents.GuildMessages,
+                //
+                // GuildVoiceStates e da musica, e tambem nao e privilegiado: sem
+                // ele a biblioteca de voz nunca recebe o VOICE_STATE_UPDATE do
+                // proprio bot e o ConnectAsync fica esperando para sempre - e o
+                // bot nao saberia quem esta no canal para a votacao do /skip.
+                Intents = DiscordIntents.Guilds | DiscordIntents.GuildMembers | DiscordIntents.GuildMessages |
+                          DiscordIntents.GuildVoiceStates,
                 Token = config.token,
                 TokenType = TokenType.Bot,
                 AutoReconnect = true,
@@ -112,6 +121,18 @@ namespace CommunityBot
             // custom id "verify:".
             Client.ComponentInteractionCreated += VerificationFlow.OnComponent;
 
+            // Botoes do "Now playing" da musica. Mesmo esquema: Handled so para
+            // custom id "music:".
+            Client.ComponentInteractionCreated += MusicComponents.OnComponent;
+
+            // Botoes dos comandos fun: o "Return" do /roleplay e o tabuleiro do
+            // /tictactoe. Handled so para "rp:" e "ttt:".
+            Client.ComponentInteractionCreated += FunComponents.OnComponent;
+
+            // Bot expulso do canal de voz e canal que esvazia. Nao ha evento de
+            // desconexao publico na biblioteca de voz; e por aqui que se sabe.
+            Client.VoiceStateUpdated += MusicService.OnVoiceStateUpdated;
+
             // Quem entra ja vinculado recebe cargos e apelido na hora; quem entra
             // sem vinculo recebe o cargo de nao verificado, se houver. Inerte em
             // servidor que nao configurou a verificacao. O intent GuildMembers,
@@ -123,6 +144,10 @@ namespace CommunityBot
             // precisa do cache de servidores para descobrir a que servidor cada
             // id solto pertence.
             Client.GuildDownloadCompleted += LegacyConfigMigration.RunAsync;
+
+            // Diz na subida se a musica esta pronta (yt-dlp e ffmpeg achados) ou
+            // o que falta. Roda os processos fora do caminho do gateway.
+            Client.GuildDownloadCompleted += MusicService.ReportStatusAsync;
 
             // Recolhe os comandos de guild que sobraram da epoca em que o bot
             // vivia num servidor so. Sem isto, o servidor que estava em guildIds
@@ -153,6 +178,18 @@ namespace CommunityBot
                 // Ao expirar, apenas desabilita os botoes em vez de apagar a
                 // mensagem: o conteudo continua legivel.
                 ButtonBehavior = ButtonPaginationBehavior.Disable
+            });
+
+            // Voz para a musica. So envio: EnableIncoming fica desligado, entao o
+            // bot nao decodifica - nem recebe - o audio de ninguem no canal.
+            //
+            // O DAVE (E2EE de voz, obrigatorio no Discord desde marco de 2026)
+            // vem ligado pelo padrao da biblioteca; a libdave chega pelo pacote
+            // DisCatSharp.Voice.Natives. Se ela faltar, a biblioteca loga "DAVE
+            // disabled" e o Discord derruba a conexao com 4017.
+            Client.UseVoice(new VoiceConfiguration
+            {
+                EnableIncoming = false
             });
 
             Client.Ready += (s, e) =>
@@ -307,6 +344,9 @@ namespace CommunityBot
             // lista vazia.
             await RobloxLinkStore.Instance.LoadAsync();
 
+            // Audio que sobrou de uma execucao que morreu no meio de uma faixa.
+            MusicService.CleanTempRoot();
+
             // Shutdown gracioso. A unit do systemd usa KillSignal=SIGINT, e antes
             // o Task.Delay(-1) so era interrompido pela morte do processo: sem
             // DisconnectAsync (o gateway ficava pendurado do lado do Discord) e
@@ -363,6 +403,10 @@ namespace CommunityBot
             // permanente se o processo morrer no meio, e sem nenhuma linha de log
             // dizendo isso. O TimeoutStopSec=30 da unit cobre esta espera.
             await AutoSoftban.DrainAsync(TimeSpan.FromSeconds(10));
+
+            // Sai dos canais de voz e apaga o audio baixado antes de largar o
+            // gateway. Cabe no TimeoutStopSec=30 junto com a espera de cima.
+            await MusicService.DrainAsync(TimeSpan.FromSeconds(8));
 
             Console.WriteLine("[shutdown] sinal recebido; desconectando do gateway...");
             try
@@ -426,6 +470,11 @@ namespace CommunityBot
                 slash.RegisterGlobalCommands<commands.Config>();
                 slash.RegisterGlobalCommands<Verification>();
                 slash.RegisterGlobalCommands<Binds>();
+                slash.RegisterGlobalCommands<Music>();
+                slash.RegisterGlobalCommands<Roleplay>();
+                slash.RegisterGlobalCommands<TextCommands>();
+                slash.RegisterGlobalCommands<MorseCommands>();
+                slash.RegisterGlobalCommands<Games>();
                 return;
             }
 
@@ -438,6 +487,11 @@ namespace CommunityBot
             slash.RegisterGuildCommands<commands.Config>(guildId.Value);
             slash.RegisterGuildCommands<Verification>(guildId.Value);
             slash.RegisterGuildCommands<Binds>(guildId.Value);
+            slash.RegisterGuildCommands<Music>(guildId.Value);
+            slash.RegisterGuildCommands<Roleplay>(guildId.Value);
+            slash.RegisterGuildCommands<TextCommands>(guildId.Value);
+            slash.RegisterGuildCommands<MorseCommands>(guildId.Value);
+            slash.RegisterGuildCommands<Games>(guildId.Value);
         }
 
         /// <summary>

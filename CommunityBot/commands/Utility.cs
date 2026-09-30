@@ -199,8 +199,16 @@ namespace CommunityBot.commands
                 .AddField(new DiscordEmbedField("Roblox verification",
                     "`/verify` `/unverify` `/update` `/whois` `/verify-panel` " +
                     "`/bind add` `/bind remove` `/bind list`", false))
+                .AddField(new DiscordEmbedField("Music",
+                    "`/play` `/skip` `/stop` `/pause` `/resume` `/queue` `/nowplaying` " +
+                    "`/volume` `/loop` `/shuffle` `/remove`", false))
                 .AddField(new DiscordEmbedField("Fun",
-                    "`/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/say`", false))
+                    "`/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/ship` `/rate` `/cancel` `/say`", false))
+                .AddField(new DiscordEmbedField("Roleplay",
+                    "`/roleplay hug` `kiss` `slap` `pat` `highfive` `dance` `attack` `cuddle` `poke` `bonk`", false))
+                .AddField(new DiscordEmbedField("Text & games",
+                    "`/text vaporwave` `clap` `mock` `quality` `upsidedown` `reverse` " +
+                    "`/morse encode` `/morse decode` `/rps` `/tictactoe`", false))
                 .AddField(new DiscordEmbedField("Configuration",
                     "`/config view` `/config mod-log` `/config auto-softban` " +
                     "`/config tickets-category` `/config tickets-role` `/config tickets-log` " +

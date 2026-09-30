@@ -1,8 +1,10 @@
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using CommunityBot.Services;
+using CommunityBot.Services.Fun;
 using DisCatSharp;
 using DisCatSharp.ApplicationCommands;
 using DisCatSharp.ApplicationCommands.Attributes;
@@ -20,8 +22,8 @@ namespace CommunityBot.commands
     /// flood num servidor grande. O cooldown é por usuário.
     /// </summary>
     // SEM ApplicationCommandRequireGuild no nivel da classe, de proposito:
-    // /8ball, /roll, /coinflip, /choose e /avatar funcionam em DM e nao tocam em
-    // ctx.Guild. Todo comando daqui que PRECISA de servidor - ou que e
+    // /8ball, /roll, /coinflip, /choose, /avatar, /ship, /rate e /cancel
+    // funcionam em DM e nao tocam em ctx.Guild. Todo comando daqui que PRECISA de servidor - ou que e
     // privilegiado, como o /say - carrega o atributo no proprio metodo, e e assim
     // que tem de continuar: ver a explicacao em BotLogs.cs sobre
     // RequireUserPermissions ter IgnoreDms = true.
@@ -140,6 +142,183 @@ namespace CommunityBot.commands
                     .WithImageUrl(url)
                     .WithUrl(url)
                     .WithColor(DiscordColor.Blurple)));
+        }
+
+        // ------------------------------------------------------------------
+        // /ship, /rate e /cancel - no molde da Loritta
+        // ------------------------------------------------------------------
+
+        private static readonly string[] s_shipPerfect =
+        {
+            "They're perfect for each other! 💞", "A match made in heaven. 💍"
+        };
+
+        private static readonly string[] s_shipHigh =
+        {
+            "They were made for each other! 💕", "Something's definitely there. 😍",
+            "Wedding bells might be ringing soon. 🔔"
+        };
+
+        private static readonly string[] s_shipMid =
+        {
+            "If they stopped being so shy, maybe it could work. 🤔", "Could go either way. 🤷",
+            "Worth a shot, maybe?"
+        };
+
+        private static readonly string[] s_shipLow =
+        {
+            "Nah, sadly it wouldn't work… 😢", "Better as friends. 🤝", "The stars say no. 🌧️"
+        };
+
+        private static readonly string[] s_shipFriendzone =
+        {
+            "I like you, but only as a friend. 😅", "Sorry, I'm married to my job. 🤖",
+            "You're sweet, but I'm just a bot. 💾"
+        };
+
+        [SlashCommand("ship", "See how compatible two people are")]
+        [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
+        public async Task ShipCommand(
+            InteractionContext ctx,
+            [Option("user", "The first person")] DiscordUser usuario,
+            [Option("other", "The second person (default: you)")] DiscordUser? outro = null)
+        {
+            var a = usuario;
+            var b = outro ?? ctx.User;
+            var botId = ctx.Client.CurrentUser.Id;
+
+            // Soma dos ids: simetrica (A+B = B+A) e fixa, como na Loritta - o mesmo
+            // casal sempre da o mesmo numero, e trocar a ordem nao muda nada.
+            // unchecked por principio; dois snowflakes somados cabem folgado no ulong.
+            var seed = unchecked(a.Id + b.Id);
+
+            int percent;
+            string line;
+            if (a.Id == b.Id)
+            {
+                percent = 100;
+                line = "Self-love is the best love. 💖";
+            }
+            else if (a.Id == botId || b.Id == botId)
+            {
+                percent = (int)(seed % 51);
+                line = s_shipFriendzone[seed % (ulong)s_shipFriendzone.Length];
+            }
+            else
+            {
+                percent = (int)(seed % 101);
+                var tier = percent switch
+                {
+                    100 => s_shipPerfect,
+                    >= 67 => s_shipHigh,
+                    >= 34 => s_shipMid,
+                    >= 1 => s_shipLow,
+                    _ => new[] { "No. Just no. 💔" }
+                };
+                line = tier[seed / 101 % (ulong)tier.Length];
+            }
+
+            // Metade de cada nome por elemento de texto, e nao por char: cortar
+            // um emoji do nome ao meio deixaria um "?" no nome do casal.
+            var nameA = new StringInfo(ShipDisplayName(a));
+            var nameB = new StringInfo(ShipDisplayName(b));
+            var shipName = nameA.SubstringByTextElements(0, (nameA.LengthInTextElements + 1) / 2) +
+                           nameB.SubstringByTextElements(nameB.LengthInTextElements / 2);
+
+            var filled = (int)Math.Round(percent / 10.0);
+            var bar = new string('█', filled) + new string('░', 10 - filled);
+
+            var color = percent >= 67 ? new DiscordColor(0xFF6FA8) : percent >= 34 ? DiscordColor.Gold : DiscordColor.Gray;
+
+            await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder().AddEmbed(new DiscordEmbedBuilder()
+                    .WithTitle("💘 Matchmaking")
+                    .WithDescription($"{a.Mention} + {b.Mention} = ✨**{Embeds.SafeTrim(shipName, 64)}**✨\n\n" +
+                                     $"`{bar}` **{percent}%**\n{line}")
+                    .WithColor(color)));
+        }
+
+        private static string ShipDisplayName(DiscordUser user)
+        {
+            var name = string.IsNullOrWhiteSpace(user.GlobalName) ? user.Username : user.GlobalName;
+            return name.Length == 0 ? "?" : name;
+        }
+
+        private static readonly string[] s_rateReasons =
+        {
+            "Please, just no. 🗑️",
+            "Yikes. Hard pass. 😬",
+            "I've seen better. Much better. 😐",
+            "Not great, not terrible. Mostly not great. 🫤",
+            "It has its moments. Few of them. 🙃",
+            "Perfectly average. 🤷",
+            "Pretty decent, actually. 🙂",
+            "I like it! 👍",
+            "Really good stuff. 😄",
+            "Almost perfect! ✨",
+            "Simply perfect. No notes. 🏆"
+        };
+
+        [SlashCommand("rate", "I'll rate anything from 0 to 10")]
+        [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
+        public async Task RateCommand(
+            InteractionContext ctx,
+            [Option("thing", "What should I rate?")][MaximumLength(200)] string coisa)
+        {
+            var key = coisa.Trim().ToLowerInvariant();
+            var botId = ctx.Client.CurrentUser.Id;
+
+            string score;
+            string reason;
+            if (key is "sollarety" or "you" or "yourself" || key == $"<@{botId}>" || key == $"<@!{botId}>")
+            {
+                score = "∞";
+                reason = "Obviously. 😌";
+            }
+            else
+            {
+                // Muda uma vez por dia, como na Loritta: a mesma coisa tem a mesma
+                // nota o dia inteiro, e insistir no comando nao sobe a nota.
+                var today = DateTime.UtcNow;
+                var value = (int)(StableHash.Of($"{key}|{today.Year}-{today.DayOfYear}") % 11);
+                score = $"{value}/10";
+                reason = s_rateReasons[value];
+            }
+
+            await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder().AddEmbed(new DiscordEmbedBuilder()
+                    .WithDescription($"🤔 I rate **{Embeds.SafeTrim(coisa, 200)}** a **{score}**!\n*{reason}*")
+                    .WithColor(DiscordColor.Blurple)));
+        }
+
+        private static readonly string[] s_cancelReasons =
+        {
+            "putting pineapple on pizza", "clapping when the plane landed", "replying \"k\" to a paragraph",
+            "leaving someone on read for three business days", "using light mode at 3 AM",
+            "saying \"it's giving\" unironically", "microwaving fish in the office", "spoiling the season finale",
+            "not using their turn signal", "putting milk before cereal", "reheating coffee four times",
+            "laughing at their own jokes before the punchline", "pronouncing GIF wrong (either way)",
+            "having 4,000 unread emails", "skipping the tutorial and then asking for help",
+            "calling a hot dog a sandwich", "saying \"no offense\" and then offending",
+            "starting a sentence with \"well, actually\"", "never muting their mic",
+            "breathing into the mic in voice chat", "pinging @everyone for a meme",
+            "rating their own music 10/10", "eating the last slice without asking",
+            "posting \"first\" in the comments", "spelling it \"definately\""
+        };
+
+        [SlashCommand("cancel", "Cancel someone on the internet (it's a joke)")]
+        [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
+        public async Task CancelCommand(
+            InteractionContext ctx,
+            [Option("user", "Who gets cancelled")] DiscordUser usuario)
+        {
+            var reason = s_cancelReasons[RandomNumberGenerator.GetInt32(s_cancelReasons.Length)];
+
+            await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder().AddEmbed(new DiscordEmbedBuilder()
+                    .WithDescription($"📢 {usuario.Mention} was **cancelled** for {reason}.")
+                    .WithFooter("It's a joke — nobody actually got cancelled.")
+                    .WithColor(DiscordColor.Orange)));
         }
 
         [SlashCommand("say", "Make the bot say something", (long)Permissions.ManageMessages)]

@@ -24,6 +24,26 @@ Requer o **SDK do .NET 10** (`sudo dnf install dotnet-sdk-10.0`). O projeto tem
 setembro/2026 era .NET 9, que é STS e perde o suporte em 10/11/2026; o .NET 10 é
 LTS.
 
+A **música** precisa de mais três coisas na máquina, e o resto do bot funciona
+sem elas — o `/play` só responde que a música está indisponível, e a linha
+`[musica]` do log na subida diz o que faltou:
+
+- **yt-dlp**, o binário standalone do GitHub em `~/.local/bin/yt-dlp`. Ele traz
+  embutido o resolvedor de desafios do YouTube (EJS) e se atualiza sozinho com
+  `yt-dlp -U`; o pacote do Fedora fica para trás justo quando o YouTube muda
+  alguma coisa. O caminho vai **absoluto** no config, porque o PATH do systemd de
+  usuário é só `/usr/local/bin:/usr/bin`.
+- **Um runtime JavaScript.** O YouTube passou a exigir um no fim de 2025; o
+  yt-dlp só procura o Deno sozinho, e o `node` (`sudo dnf install nodejs22`)
+  entra pelo `music.jsRuntimes`.
+- **ffmpeg** (`sudo dnf install ffmpeg-free`, ou o do RPM Fusion). Decodifica o
+  áudio baixado para o PCM que a voz envia.
+
+As bibliotecas nativas da voz — libopus, libsodium e a **libdave** do DAVE — vêm
+pelo pacote `DisCatSharp.Voice.Natives`. Não instale nada para elas: os pacotes
+do Fedora só trazem a versão com número (`libopus.so.0`), que o .NET não procura,
+e a libdave nem existe empacotada.
+
 1. Crie uma aplicação em <https://discord.com/developers/applications>.
 2. Em **Bot**, ligue o intent privilegiado **Server Members**. É o que permite
    ler cargos para a checagem de hierarquia.
@@ -36,7 +56,8 @@ LTS.
    hoje; os dois são o teto do arranjo.
    **Message Content não é necessário.** Os comandos são todos slash command, e o
    vigia de canal (abaixo) usa o **Guild Messages**, que não é privilegiado e não
-   precisa de nada no portal: ele olha quem escreveu e onde, nunca o texto.
+   precisa de nada no portal: ele olha quem escreveu e onde, nunca o texto. A
+   música usa o **Guild Voice States**, que também não é privilegiado.
 3. Copie o config e cole o token:
    ```bash
    cp CommunityBot/config/config.example.jsonc CommunityBot/config/config.jsonc
@@ -47,7 +68,7 @@ LTS.
    comandos exigem: **View Channel**,
    **Send Messages**, Ban Members, Kick Members, Moderate Members, Manage Messages,
    Manage Channels, Manage Roles, Manage Nicknames, Read Message History, Attach
-   Files e Add Reactions.
+   Files, Add Reactions, **Connect** e **Speak** (as duas últimas são da música).
 
    Três delas costumam ser esquecidas, e cada uma quebra alguma coisa em
    silêncio: sem **View Channel** o gateway não entrega as mensagens do canal
@@ -88,7 +109,7 @@ Sem isso o bot sobe com tickets, avisos e configuração por servidor zerados.
 
 ## Config
 
-O arquivo tem **três** chaves. Todo o resto — canal de log, armadilha do softban
+O arquivo tem **quatro** chaves. Todo o resto — canal de log, armadilha do softban
 automático, tickets, cargos da verificação Roblox — é **por servidor** e se
 configura pelo comando `/config`, por quem tem **Gerenciar Servidor**, sem
 acesso a esta máquina.
@@ -98,6 +119,7 @@ acesso a esta máquina.
 | `token` | Token da aplicação. |
 | `guildIds` | Atalho de desenvolvimento. **Deixe vazio**: os comandos são registrados globalmente e valem em todo servidor, inclusive nos que o bot entrar depois. Ver abaixo. |
 | `robloxVerify` | Ligação com o Worker da verificação Roblox: `startUrl`, `resultUrl` e `apiSecret`. Sem o `apiSecret` o `/verify` responde que a verificação está indisponível e nada mais muda. Ver [Verificação Roblox](#verificação-roblox). |
+| `music` | Caminho do yt-dlp e do ffmpeg, runtime JS e os limites da música (duração máxima da faixa, tamanho da fila, tamanho do arquivo, tempo ocioso antes de sair). São da **instalação**, e não por servidor, porque todos falam do disco e da banda desta máquina. Ver [Música](#música). |
 
 ### Onde os comandos são registrados
 
@@ -358,8 +380,62 @@ dono do servidor nem de quem está acima dele — limite do próprio Discord.
    ao cargo do bot à mão, se quiserem o apelido; o preset "Full" do convite já
    a inclui.
 
+### Música
+`/play` `/skip` `/stop` `/pause` `/resume` `/queue` `/nowplaying` `/volume`
+`/loop` `/shuffle` `/remove`
+
+O `/play` aceita um link do YouTube ou um texto para buscar. O bot **baixa o
+áudio inteiro** com o yt-dlp para o `/tmp` privado da unit (`PrivateTmp=yes`),
+toca no canal de voz e **apaga o arquivo** assim que a faixa acaba — pulada,
+parada ou tocada até o fim. A fila guarda só metadado, em memória. Para a troca
+de faixa não esperar o download, a próxima é baixada enquanto a atual toca: no
+máximo dois arquivos por servidor no disco. O que sobrar de uma execução que
+morreu no meio é apagado na subida seguinte.
+
+- **Só YouTube.** Link de qualquer outro site é recusado antes de chegar ao
+  yt-dlp: o extrator genérico dele baixa o que for apontado, inclusive endereço
+  interno desta rede. O download parte sempre da URL canônica que a busca
+  devolveu, nunca do texto digitado. Playlist e live também são recusadas.
+- **Limites** no `music` do config: 15 minutos por faixa, 50 na fila, 60 MB
+  por arquivo e 2 minutos com a fila vazia ou o canal sem ninguém antes de sair.
+- **Quem manda.** Pula, para, pausa e mexe no volume sem votação quem pediu a
+  faixa atual, quem tem **Move Members** no canal de voz ou quem está sozinho com
+  o bot. Os demais votam no `/skip`, e a maioria de quem está ouvindo decide. O
+  `/remove` tira a sua própria faixa; a dos outros, só com Move Members. Os
+  botões do aviso "Now playing" passam pelas mesmas regras.
+- **DAVE.** Desde março de 2026 o Discord só aceita voz com criptografia ponta a
+  ponta, bots inclusos, e derruba quem não negocia com o código 4017. Por isso o
+  bot está numa **nightly** do DisCatSharp (10.7.1-nightly-032, fixada no
+  `.csproj`): o DAVE da 10.7.0 estável é experimental, e a correção de quem entra
+  ou sai do canal no meio da música (PR #882) só saiu nas nightlies. Voltar para
+  a estável quando sair a 10.7.1. Se a libdave faltar, o log mostra "DAVE
+  disabled" — é a primeira coisa a procurar se o bot entrar mudo.
+- O bot **não ouve** ninguém: a voz é só de envio (`EnableIncoming = false`).
+
 ### Diversão
-`/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/say`
+`/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/ship` `/rate` `/cancel` `/say`
+`/roleplay …` `/text …` `/morse encode|decode` `/rps` `/tictactoe`
+
+Os novos seguem a [Loritta](https://loritta.website):
+
+- `/ship` dá a compatibilidade de duas pessoas pela soma dos ids — o mesmo casal
+  sempre dá o mesmo número, em qualquer ordem —, com o nome do casal e uma frase
+  por faixa. Com o bot no par, é friendzone.
+- `/rate` dá uma nota de 0 a 10 que muda uma vez por dia. A semente é um SHA-256
+  do texto e da data, e não o `GetHashCode`, que o .NET sorteia a cada processo:
+  com ele a nota mudaria a cada reinício.
+- `/cancel` cancela alguém por um motivo bobo sorteado.
+- `/roleplay hug|kiss|slap|pat|highfive|dance|attack|cuddle|poke|bonk` mostra um
+  GIF de anime do [nekos.best](https://nekos.best) (API pública, sem chave; os
+  termos proíbem uso comercial). O botão **Return** só funciona para o alvo,
+  devolve a ação e conta o combo; tudo o que ele precisa vai no próprio custom
+  id, então continua valendo depois de um reinício. Abraço em si mesmo vira
+  abraço do bot; tapa no bot volta para quem bateu.
+- `/text vaporwave|clap|mock|quality|upsidedown|reverse` e `/morse` respondem em
+  mensagem comum, sem menção nenhuma notificada e com o `[` escapado.
+- `/rps` é pedra-papel-tesoura contra o bot; `/tictactoe` é jogo da velha entre
+  duas pessoas num tabuleiro de botões, em memória, que expira depois de 3
+  minutos sem jogada.
 
 Todos com cooldown por usuário. O `/say` exige Manage Messages e não permite
 menção a cargo nem a `@everyone`: senão seria um jeito de contornar quem pode

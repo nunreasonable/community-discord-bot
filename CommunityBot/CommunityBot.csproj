@@ -22,26 +22,40 @@
     carimbo de modificacao, e sobrescrever a copia a cada build apagaria uma
     edicao feita direto em bin/.
   -->
+  <!--
+    Nightly fixada, e nao a 10.7.0 estavel: desde marco de 2026 o Discord so
+    aceita voz com DAVE (E2EE), e o DAVE da 10.7.0 e experimental. O ciclo de
+    vida dele - quem entra ou sai do canal no meio da musica - so foi corrigido
+    no PR #882, que saiu nas nightlies 10.7.1. Os pacotes DisCatSharp.* precisam
+    estar TODOS na mesma versao; por isso ela mora numa propriedade so. Voltar
+    para a estavel quando sair a 10.7.1.
+  -->
+  <PropertyGroup>
+    <DisCatSharpVersion>10.7.1-nightly-032</DisCatSharpVersion>
+  </PropertyGroup>
+
   <ItemGroup>
     <None Include="config\config.example.jsonc" CopyToOutputDirectory="PreserveNewest" Link="config\config.example.jsonc" />
     <None Include="config\config.jsonc" CopyToOutputDirectory="PreserveNewest" Link="config\config.jsonc" Condition="Exists('config\config.jsonc')" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="DisCatSharp" Version="10.7.0" />
-    <PackageReference Include="DisCatSharp.ApplicationCommands" Version="10.7.0" />
-    <PackageReference Include="DisCatSharp.Interactivity" Version="10.7.0" />
+    <PackageReference Include="DisCatSharp" Version="$(DisCatSharpVersion)" />
+    <PackageReference Include="DisCatSharp.ApplicationCommands" Version="$(DisCatSharpVersion)" />
+    <PackageReference Include="DisCatSharp.Interactivity" Version="$(DisCatSharpVersion)" />
+    <PackageReference Include="DisCatSharp.Voice" Version="$(DisCatSharpVersion)" />
+    <!--
+      As bibliotecas nativas da voz: libopus, libsodium e libdave. O Fedora so
+      instala libopus.so.0 e libsodium.so.26 - e o carregador do .NET procura o
+      nome sem versao, que so vem nos pacotes -devel -, e a libdave nem existe
+      empacotada. Sem ela o DAVE desliga em silencio e o Discord recusa a
+      conexao de voz com o codigo 4017. O pacote Voice NAO puxa este sozinho,
+      ao contrario do que a doc diz.
+    -->
+    <PackageReference Include="DisCatSharp.Voice.Natives" Version="$(DisCatSharpVersion)">
+      <IncludeAssets>runtime; native; contentfiles</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-  </ItemGroup>
-
-  <!--
-    NuGet.Protocol entra transitivo pelo DisCatSharp 10.7.0 na 7.3.0, que tem o
-    aviso GHSA-g4vj-cjjj-v7hg (NU1901). A referencia direta sobe o grafo inteiro
-    do NuGet.* para a versao corrigida. Pode sair quando o DisCatSharp subir a
-    dele.
-  -->
-  <ItemGroup>
-    <PackageReference Include="NuGet.Protocol" Version="7.9.0" />
   </ItemGroup>
 
   <!--
@@ -51,20 +65,5 @@
   <PropertyGroup>
     <NoWarn>$(NoWarn);DV2001</NoWarn>
   </PropertyGroup>
-
-  <!--
-    O DisCatSharp.Interactivity traz o Backport.System.Threading.Lock, cujo
-    gerador de codigo exige o Roslyn 5.3, mais novo que o 5.0 do SDK 10.0.1xx
-    do Fedora. Ele vira o aviso CS9057 e nao roda de qualquer forma - e no net10.0 o
-    System.Threading.Lock ja e nativo, entao o polyfill nao tem o que gerar.
-    ExcludeAssets="analyzers" num PackageReference direto nao basta, porque o
-    ativo continua chegando pela dependencia transitiva; por isso a remocao e
-    feita aqui, antes do compilador.
-  -->
-  <Target Name="DropBackportLockAnalyzer" BeforeTargets="CoreCompile">
-    <ItemGroup>
-      <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.NuGetPackageId)' == 'Backport.System.Threading.Lock'" />
-    </ItemGroup>
-  </Target>
 
 </Project>
