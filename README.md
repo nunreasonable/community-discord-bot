@@ -13,6 +13,11 @@ Foi traduzido em 28/09/2026, e mensagem nova já entra em inglês. Os comentári
 console (o que o `/logs` mostra) continuam em português — o `BotLogBuffer`
 classifica a severidade pelas palavras "erro", "falha" e "aviso".
 
+> **Licença: todos os direitos reservados.** O repositório é público **só para
+> leitura**. Copiar, modificar, redistribuir ou rodar uma instância própria do
+> bot exige permissão por escrito — ver [`LICENSE`](LICENSE). O fork que o GitHub
+> permite em repositório público não dá direito nenhum além de ler.
+
 > **Nome provisório.** `CommunityBot` é um marcador. Renomear depois significa
 > mexer na pasta, no `.csproj`, na unit do systemd e no texto das três páginas do
 > site.

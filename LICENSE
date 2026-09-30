@@ -1,0 +1,130 @@
+Copyright (c) 2026 daeese. All rights reserved.
+
+READ-ONLY SOURCE LICENSE
+
+This repository (Sollarety, also called CommunityBot) is proprietary. That
+covers its source code, documentation, configuration examples, scripts and
+every other file in it, along with its full commit history. It is public on
+GitHub so that people can read it. Being public does not make it open source.
+
+1. What you may do
+
+   You may view and read the contents of this repository on GitHub. No other
+   permission is granted.
+
+2. What you may not do
+
+   Unless the copyright holder gives you permission in writing first, you may
+   not do any of the following with this repository, in whole or in part:
+
+   a. copy or reproduce it, including pasting any part of it into another
+      project or keeping copies of it outside GitHub;
+   b. modify, translate or adapt it, or create derivative works based on it;
+   c. distribute, redistribute, publish, sublicense, sell, rent or otherwise
+      make it available to anyone else;
+   d. compile, run, deploy or host it, including running your own instance of
+      the bot.
+
+3. Forks on GitHub
+
+   GitHub's Terms of Service let GitHub users view public repositories and
+   fork them within GitHub. That is the only right a fork gives you. A fork
+   does not let you use, run, modify or redistribute anything in this
+   repository, or copy it outside GitHub. Everything in a fork remains under
+   this license.
+
+4. No other rights
+
+   Making this repository public does not put it in the public domain or
+   under an open-source license. You receive no license or right by
+   implication, estoppel or otherwise, apart from what section 1 grants.
+
+5. Third-party components
+
+   The libraries and tools this project uses, such as DisCatSharp,
+   Newtonsoft.Json, yt-dlp and ffmpeg, are not part of this repository. Each
+   remains under its own license.
+
+6. Issues and pull requests
+
+   Opening an issue or a pull request gives you no rights to this code.
+   Content you submit may be declined without explanation.
+
+7. No warranty
+
+   THE CONTENTS OF THIS REPOSITORY ARE PROVIDED "AS IS", WITHOUT WARRANTY OF
+   ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+   OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR
+   OTHER LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THESE CONTENTS.
+
+To ask for permission, contact the copyright holder through https://daeese.me.
+
+-------------------------------------------------------------------------------
+
+LICENÇA DE CÓDIGO SOMENTE PARA LEITURA
+(Tradução de cortesia. Se as duas versões divergirem, vale o texto em inglês
+acima.)
+
+Copyright (c) 2026 daeese. Todos os direitos reservados.
+
+Este repositório (Sollarety, também chamado CommunityBot) é proprietário. Isso
+vale para o código-fonte, a documentação, os exemplos de configuração, os
+scripts e todos os outros arquivos dele, junto com todo o histórico de
+commits. Ele é público no GitHub para que as pessoas possam lê-lo. Ser público
+não o torna código aberto.
+
+1. O que você pode fazer
+
+   Você pode ver e ler o conteúdo deste repositório no GitHub. Nenhuma outra
+   permissão é concedida.
+
+2. O que você não pode fazer
+
+   Sem antes receber permissão por escrito do titular dos direitos, você não
+   pode fazer nada do que segue com este repositório, no todo ou em parte:
+
+   a. copiá-lo ou reproduzi-lo, o que inclui colar qualquer trecho dele em
+      outro projeto ou guardar cópias dele fora do GitHub;
+   b. modificá-lo, traduzi-lo ou adaptá-lo, ou criar obras derivadas dele;
+   c. distribuí-lo, redistribuí-lo, publicá-lo, sublicenciá-lo, vendê-lo,
+      alugá-lo ou disponibilizá-lo de qualquer outra forma a outra pessoa;
+   d. compilá-lo, executá-lo, implantá-lo ou hospedá-lo, o que inclui rodar
+      uma instância própria do bot.
+
+3. Forks no GitHub
+
+   Os Termos de Serviço do GitHub deixam os usuários do GitHub ver
+   repositórios públicos e fazer fork deles dentro do GitHub. É o único
+   direito que um fork dá. Um fork não permite usar, executar, modificar ou
+   redistribuir nada deste repositório, nem copiá-lo para fora do GitHub. Tudo
+   o que está num fork continua sujeito a esta licença.
+
+4. Nenhum outro direito
+
+   Tornar este repositório público não o coloca em domínio público nem sob
+   uma licença de código aberto. Você não recebe licença nem direito algum
+   por implicação, preclusão ou qualquer outra via, além do que a seção 1
+   concede.
+
+5. Componentes de terceiros
+
+   As bibliotecas e ferramentas que este projeto usa, como DisCatSharp,
+   Newtonsoft.Json, yt-dlp e ffmpeg, não fazem parte deste repositório. Cada
+   uma continua sob a própria licença.
+
+6. Issues e pull requests
+
+   Abrir uma issue ou um pull request não lhe dá direito algum sobre este
+   código. O que você enviar pode ser recusado sem explicação.
+
+7. Sem garantia
+
+   O CONTEÚDO DESTE REPOSITÓRIO É FORNECIDO "NO ESTADO EM QUE SE ENCONTRA",
+   SEM GARANTIA DE NENHUM TIPO, EXPRESSA OU IMPLÍCITA, INCLUINDO, MAS NÃO SE
+   LIMITANDO A, GARANTIAS DE COMERCIABILIDADE, ADEQUAÇÃO A UM FIM ESPECÍFICO E
+   NÃO VIOLAÇÃO. EM NENHUMA HIPÓTESE O TITULAR DOS DIREITOS SERÁ RESPONSÁVEL
+   POR QUALQUER REIVINDICAÇÃO, DANO OU OUTRA RESPONSABILIDADE DECORRENTE DESTE
+   CONTEÚDO OU RELACIONADA A ELE.
+
+Para pedir permissão, fale com o titular dos direitos pelo https://daeese.me.
