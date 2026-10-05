@@ -21,6 +21,9 @@ namespace CommunityBot.config
         /// <summary>Nunca nulo: sem a secao no arquivo, valem os padroes de MusicSettings.</summary>
         public MusicSettings music { get; private set; } = new();
 
+        /// <summary>Nunca nulo: sem a secao, o feed de commits fica desligado.</summary>
+        public GitFeedSettings gitFeed { get; private set; } = new();
+
         // LEGADO. Estas seis chaves saíram do arquivo e viraram configuracao por
         // servidor, escrita pelo /config. Continuam sendo lidas para a migracao
         // unica do LegacyConfigMigration, e nada mais as consulta.
@@ -62,6 +65,7 @@ namespace CommunityBot.config
             guildIds = data?.guildIds;
             robloxVerify = data?.robloxVerify ?? new RobloxVerifySettings();
             music = data?.music ?? new MusicSettings();
+            gitFeed = data?.gitFeed ?? new GitFeedSettings();
             moderationLogChannelId = data?.moderationLogChannelId;
             autoSoftbanGuildId = data?.autoSoftbanGuildId;
             autoSoftbanChannelId = data?.autoSoftbanChannelId;
@@ -136,6 +140,9 @@ namespace CommunityBot.config
 
         /// <summary>Caminho do yt-dlp e limites da musica. Ver MusicSettings.</summary>
         public MusicSettings? music { get; set; }
+
+        /// <summary>Repositorio git local cujos commits vao para um canal. Ver GitFeedSettings.</summary>
+        public GitFeedSettings? gitFeed { get; set; }
 
         /// <summary>
         /// LEGADO, so para a migracao. Ver LegacyConfigMigration: estas seis
@@ -229,8 +236,20 @@ namespace CommunityBot.config
         /// </summary>
         public string jsRuntimes { get; set; } = "node";
 
+        /// <summary>Teto de um video do YouTube - o unico que e BAIXADO antes de tocar.</summary>
         public int maxTrackMinutes { get; set; } = 15;
+
+        /// <summary>
+        /// Teto do que toca por streaming (SoundCloud). Maior porque nao ocupa
+        /// disco: mix de uma hora e comum la.
+        /// </summary>
+        public int maxStreamMinutes { get; set; } = 180;
+
         public int maxQueueLength { get; set; } = 50;
+
+        /// <summary>Quantas faixas um link de playlist, album ou set pode enfileirar de uma vez.</summary>
+        public int maxPlaylistTracks { get; set; } = 50;
+
         public int maxFileSizeMB { get; set; } = 60;
 
         /// <summary>Quanto o bot espera com a fila vazia, ou sozinho no canal, antes de sair.</summary>
@@ -240,8 +259,42 @@ namespace CommunityBot.config
         // um zero ou negativo digitado no config viraria "nenhuma faixa cabe" ou
         // "sai do canal na hora", sem nada no log dizendo por que.
         public TimeSpan MaxTrackLength => TimeSpan.FromMinutes(Math.Clamp(maxTrackMinutes, 1, 180));
+        public TimeSpan MaxStreamLength => TimeSpan.FromMinutes(Math.Clamp(maxStreamMinutes, 1, 720));
         public int MaxQueue => Math.Clamp(maxQueueLength, 1, 500);
+        public int MaxPlaylist => Math.Clamp(maxPlaylistTracks, 1, 200);
         public int MaxFileSizeMegabytes => Math.Clamp(maxFileSizeMB, 5, 1024);
         public TimeSpan IdleLeave => TimeSpan.FromMinutes(Math.Clamp(idleLeaveMinutes, 1, 60));
+    }
+
+    /// <summary>
+    /// Feed de commits: um repositorio git DESTA maquina e o canal que recebe o
+    /// resumo de cada commit novo.
+    ///
+    /// Mora aqui, e nao no /config, de proposito: o repositorio so existe no
+    /// disco de quem hospeda o bot, e nenhum outro servidor onde o Sollarety
+    /// esta pode ligar - nem descobrir - isto.
+    /// </summary>
+    internal sealed class GitFeedSettings
+    {
+        /// <summary>Caminho absoluto do repositorio (a pasta que contem o .git).</summary>
+        public string? repoPath { get; set; }
+
+        public string branch { get; set; } = "main";
+        public ulong? guildId { get; set; }
+        public ulong? channelId { get; set; }
+
+        /// <summary>Nome que aparece no topo de cada resumo.</summary>
+        public string title { get; set; } = "Commits";
+
+        public int pollSeconds { get; set; } = 30;
+        public string gitPath { get; set; } = "git";
+
+        public bool IsConfigured =>
+            !string.IsNullOrWhiteSpace(repoPath) && guildId is > 0 && channelId is > 0 &&
+            !string.IsNullOrWhiteSpace(branch);
+
+        // Piso de 10s: cada volta roda um git, e menos que isso nao muda nada
+        // para quem le o canal.
+        public TimeSpan PollInterval => TimeSpan.FromSeconds(Math.Clamp(pollSeconds, 10, 3600));
     }
 }

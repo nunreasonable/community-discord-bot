@@ -39,7 +39,7 @@ namespace CommunityBot.Services.Music
         private QueuedTrack? _current;
         private CancellationTokenSource? _entryCts;
         private CancellationTokenSource? _aloneCts;
-        private (QueuedTrack Entry, Task<string> File)? _prefetch;
+        private (QueuedTrack Entry, Task<Prepared> Ready)? _prefetch;
         private DiscordMessage? _nowPlaying;
         private LoopMode _loopMode = LoopMode.Off;
         private long _bytesSent;
@@ -93,21 +93,29 @@ namespace CommunityBot.Services.Music
         // Fila
         // ------------------------------------------------------------------
 
-        /// <summary>Posicao na fila, a partir de 1; 0 quando vai tocar agora.</summary>
-        public bool TryEnqueue(QueuedTrack entry, int max, out int position)
+        /// <summary>
+        /// Poe as entradas no fim da fila ate o limite. Devolve quantas entraram
+        /// e a posicao da primeira (a partir de 1; 0 quando ela toca agora).
+        /// </summary>
+        public int TryEnqueue(IReadOnlyList<QueuedTrack> entries, int max, out int firstPosition)
         {
+            int added;
             lock (_gate)
             {
-                position = 0;
-                if (IsClosing || _queue.Count >= max)
-                    return false;
+                firstPosition = 0;
+                if (IsClosing)
+                    return 0;
 
-                _queue.Add(entry);
-                position = _current is null && !_busy && _queue.Count == 1 ? 0 : _queue.Count;
+                added = Math.Min(entries.Count, Math.Max(0, max - _queue.Count));
+                if (added == 0)
+                    return 0;
+
+                firstPosition = _current is null && !_busy && _queue.Count == 0 ? 0 : _queue.Count + 1;
+                _queue.AddRange(entries.Take(added));
             }
 
             _wake.Release();
-            return true;
+            return added;
         }
 
         public List<QueuedTrack> SnapshotQueue()
@@ -407,7 +415,7 @@ namespace CommunityBot.Services.Music
 
         private async Task PlayAsync(QueuedTrack entry, CancellationToken ct)
         {
-            string? file = null;
+            Prepared? prepared = null;
             var entryCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
             try
@@ -416,18 +424,18 @@ namespace CommunityBot.Services.Music
 
                 try
                 {
-                    file = await TakeFileAsync(entry, settings, ct);
+                    prepared = await TakeAsync(entry, settings, ct);
                 }
                 catch (MusicException ex)
                 {
-                    await SayAsync(Embeds.Error("Skipped a track", $"{MusicFormat.Link(entry.Track)}\n{ex.Message}"));
+                    await SayAsync(Embeds.Error("Skipped a track", $"{MusicFormat.Link(entry.Display)}\n{ex.Message}"));
                     return;
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
-                    Console.WriteLine($"[musica] falha ao baixar {entry.Track.Id} em {GuildId}: {ex.Message}");
+                    Console.WriteLine($"[musica] falha ao preparar {entry.Track.Id} em {GuildId}: {ex.Message}");
                     await SayAsync(Embeds.Error("Skipped a track",
-                        $"{MusicFormat.Link(entry.Track)}\nSomething went wrong while downloading it."));
+                        $"{MusicFormat.Link(entry.Display)}\nSomething went wrong while getting it ready."));
                     return;
                 }
 
@@ -446,7 +454,23 @@ namespace CommunityBot.Services.Music
                 {
                     try
                     {
-                        interrupted = await StreamAsync(file, settings, entryCts.Token);
+                        // Arquivo baixado (YouTube) ou URL pedida AGORA (SoundCloud):
+                        // o link de audio do SoundCloud expira, entao nem o do
+                        // prefetch nem o da volta anterior do loop servem.
+                        var input = prepared.File ??
+                                    await YtDlp.StreamUrlAsync(prepared.Playable, settings, entryCts.Token);
+
+                        interrupted = await StreamAsync(input, isUrl: prepared.File is null, settings, entryCts.Token);
+                    }
+                    catch (OperationCanceledException) when (entryCts.IsCancellationRequested)
+                    {
+                        // Pulada enquanto a URL era pedida.
+                        interrupted = true;
+                    }
+                    catch (MusicException ex)
+                    {
+                        await SayAsync(Embeds.Error("Skipped a track", $"{MusicFormat.Link(entry.Display)}\n{ex.Message}"));
+                        return;
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
@@ -454,14 +478,14 @@ namespace CommunityBot.Services.Music
                         // perde-se esta faixa, nao o player inteiro.
                         Console.WriteLine($"[musica] falha ao tocar {entry.Track.Id} em {GuildId}: {ex.Message}");
                         await SayAsync(Embeds.Error("Playback failed",
-                            $"Something went wrong while playing {MusicFormat.Link(entry.Track)}, so I skipped it."));
+                            $"Something went wrong while playing {MusicFormat.Link(entry.Display)}, so I skipped it."));
                         return;
                     }
                 }
                 while (!interrupted && Loop == LoopMode.Track && !ct.IsCancellationRequested);
 
                 // Loop de fila: a faixa volta ao fim, so como metadado. O audio
-                // sera baixado de novo quando chegar a vez dela.
+                // sera baixado (ou pedido) de novo quando chegar a vez dela.
                 if (Loop == LoopMode.Queue && !ct.IsCancellationRequested)
                 {
                     lock (_gate)
@@ -479,15 +503,15 @@ namespace CommunityBot.Services.Music
 
                 entryCts.Dispose();
                 await RetireNowPlayingAsync();
-                DeleteFile(file);
+                DeleteFile(prepared?.File);
             }
         }
 
         /// <summary>
-        /// Toca um arquivo ate o fim. Devolve true se foi interrompido (skip ou
-        /// stop), false se terminou sozinho.
+        /// Toca um arquivo ou uma URL de audio ate o fim. Devolve true se foi
+        /// interrompido (skip ou stop), false se terminou sozinho.
         /// </summary>
-        private async Task<bool> StreamAsync(string file, MusicSettings settings, CancellationToken token)
+        private async Task<bool> StreamAsync(string input, bool isUrl, MusicSettings settings, CancellationToken token)
         {
             var psi = new ProcessStartInfo(settings.ffmpegPath)
             {
@@ -496,11 +520,23 @@ namespace CommunityBot.Services.Music
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            foreach (var arg in new[]
-                     {
-                         "-nostdin", "-hide_banner", "-loglevel", "error",
-                         "-i", file, "-vn", "-ac", "2", "-ar", "48000", "-f", "s16le", "pipe:1"
-                     })
+
+            var args = new List<string> { "-nostdin", "-hide_banner", "-loglevel", "error" };
+            if (isUrl)
+            {
+                // Streaming (SoundCloud): reconecta se a rede piscar, e so fala
+                // HTTPS. O HLS lista os segmentos, e sem a lista de protocolos um
+                // playlist adulterado poderia apontar o ffmpeg para um arquivo
+                // local ou outro esquema qualquer.
+                args.AddRange(new[]
+                {
+                    "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+                    "-protocol_whitelist", "https,tls,tcp,crypto"
+                });
+            }
+
+            args.AddRange(new[] { "-i", input, "-vn", "-ac", "2", "-ar", "48000", "-f", "s16le", "pipe:1" });
+            foreach (var arg in args)
                 psi.ArgumentList.Add(arg);
 
             using var ffmpeg = new Process { StartInfo = psi };
@@ -546,7 +582,7 @@ namespace CommunityBot.Services.Music
             }
             finally
             {
-                YtDlp.Kill(ffmpeg);
+                ProcessRunner.Kill(ffmpeg);
             }
 
             string errors;
@@ -569,24 +605,45 @@ namespace CommunityBot.Services.Music
         // Arquivos
         // ------------------------------------------------------------------
 
-        private async Task<string> TakeFileAsync(QueuedTrack entry, MusicSettings settings, CancellationToken ct)
+        /// <summary>
+        /// Uma entrada pronta para tocar: a faixa que vai de fato tocar e, se ela
+        /// for do YouTube, o arquivo baixado. Sem arquivo, toca por streaming.
+        /// </summary>
+        private sealed record Prepared(TrackInfo Playable, string? File);
+
+        private async Task<Prepared> TakeAsync(QueuedTrack entry, MusicSettings settings, CancellationToken ct)
         {
             if (_prefetch is { } p && ReferenceEquals(p.Entry, entry))
             {
                 _prefetch = null;
-                return await p.File;
+                return await p.Ready;
             }
 
-            // A fila mudou (/remove, /shuffle) depois do prefetch: aquele arquivo
-            // nao serve mais.
+            // A fila mudou (/remove, /shuffle) depois do prefetch: aquele
+            // preparo nao serve mais.
             DiscardPrefetch();
-            return await YtDlp.DownloadAsync(entry.Track, _directory, settings, ct);
+            return await PrepareAsync(entry, settings, ct);
         }
 
         /// <summary>
-        /// Baixa a proxima enquanto a atual toca, para a troca de faixa nao
-        /// esperar o download. So UMA a frente: e no maximo dois arquivos no
-        /// disco por servidor.
+        /// Resolve a entrada (casa o Spotify, consulta a faixa de set) e, se o
+        /// que vai tocar for do YouTube, baixa. O YouTube nunca toca por
+        /// streaming - e o que o separa das outras fontes.
+        /// </summary>
+        private async Task<Prepared> PrepareAsync(QueuedTrack entry, MusicSettings settings, CancellationToken ct)
+        {
+            var playable = await MusicSources.ResolvePlayableAsync(entry, settings, ct);
+            entry.Playable = playable;
+
+            return playable.Source == TrackSource.YouTube
+                ? new Prepared(playable, await YtDlp.DownloadAsync(playable, _directory, settings, ct))
+                : new Prepared(playable, null);
+        }
+
+        /// <summary>
+        /// Prepara a proxima enquanto a atual toca, para a troca de faixa nao
+        /// esperar busca nem download. So UMA a frente: e no maximo dois arquivos
+        /// no disco por servidor.
         /// </summary>
         private void StartPrefetch(MusicSettings settings)
         {
@@ -598,7 +655,7 @@ namespace CommunityBot.Services.Music
                 return;
 
             DiscardPrefetch();
-            _prefetch = (next, YtDlp.DownloadAsync(next.Track, _directory, settings, _lifetime.Token));
+            _prefetch = (next, PrepareAsync(next, settings, _lifetime.Token));
         }
 
         private void DiscardPrefetch()
@@ -607,10 +664,10 @@ namespace CommunityBot.Services.Music
                 return;
 
             _prefetch = null;
-            _ = p.File.ContinueWith(t =>
+            _ = p.Ready.ContinueWith(t =>
             {
                 if (t.IsCompletedSuccessfully)
-                    DeleteFile(t.Result);
+                    DeleteFile(t.Result.File);
                 else
                     _ = t.Exception; // observada: o erro dela nao interessa mais a ninguem
             }, TaskScheduler.Default);

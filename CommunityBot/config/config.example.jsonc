@@ -28,10 +28,13 @@
         "apiSecret": ""
     },
 
-    // MUSICA. Cada faixa e baixada inteira pelo yt-dlp para o /tmp PRIVADO da
-    // unit (PrivateTmp=yes), tocada e apagada logo em seguida - o bot nao
-    // guarda audio nenhum. Por isso os limites moram aqui: sao do disco e da
-    // banda desta maquina, nao de um servidor.
+    // MUSICA. YouTube, SoundCloud e Spotify. Video do YouTube e baixado
+    // inteiro pelo yt-dlp para o /tmp PRIVADO da unit (PrivateTmp=yes), tocado
+    // e apagado logo em seguida; SoundCloud toca por streaming; link do Spotify
+    // e procurado no SoundCloud e, se nao bater, no YouTube. O bot nao guarda
+    // audio nenhum. Os limites moram aqui porque sao do disco e da banda desta
+    // maquina, nao de um servidor: maxTrackMinutes vale para o que e baixado,
+    // maxStreamMinutes para o que toca por streaming.
     //
     // ytDlpPath precisa ser ABSOLUTO quando o bot roda pelo systemd de usuario:
     // o PATH dele e so /usr/local/bin:/usr/bin, e o binario standalone do
@@ -45,9 +48,31 @@
         "ffmpegPath": "ffmpeg",
         "jsRuntimes": "node",
         "maxTrackMinutes": 15,
+        "maxStreamMinutes": 180,
         "maxQueueLength": 50,
+        "maxPlaylistTracks": 50,
         "maxFileSizeMB": 60,
         "idleLeaveMinutes": 2
+    },
+
+    // FEED DE COMMITS. Opcional: sem repoPath, guildId e channelId, desligado.
+    // A cada pollSeconds o bot olha o branch do repositorio git local e posta
+    // no canal um resumo de cada commit novo (mensagem, arquivos, +/-) com o
+    // .patch em anexo. So le o repositorio: nada de fetch, checkout ou lock.
+    //
+    // Na primeira subida (ou quando repositorio/branch mudam) ele posta so o
+    // commit mais recente, como prova de que chegou, e dai em diante so os
+    // novos. O ultimo postado fica em data/git-feed.json.
+    //
+    // O canal precisa ser PRIVADO se o repositorio for de codigo de servidor:
+    // o .patch entrega a logica inteira a quem le.
+    "gitFeed": {
+        "repoPath": "",
+        "branch": "main",
+        "guildId": null,
+        "channelId": null,
+        "title": "Commits",
+        "pollSeconds": 30
     }
 
     // O RESTO DA CONFIGURACAO NAO MORA MAIS AQUI.

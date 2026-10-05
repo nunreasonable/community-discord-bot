@@ -58,7 +58,7 @@ namespace CommunityBot.Services.Music
             {
                 player.Skip();
                 return MusicReply.Public(Embeds.Info("⏭️ Skipped",
-                    $"{member.Mention} skipped {MusicFormat.Link(current.Track)}."));
+                    $"{member.Mention} skipped {MusicFormat.Link(current.Display)}."));
             }
 
             var listeners = MusicService.Listeners(player).Select(m => m.Id).ToList();
@@ -66,14 +66,14 @@ namespace CommunityBot.Services.Music
 
             if (vote.Skipped)
                 return MusicReply.Public(Embeds.Info("⏭️ Vote passed",
-                    $"{vote.Votes}/{vote.Needed} listeners voted, so {MusicFormat.Link(current.Track)} was skipped."));
+                    $"{vote.Votes}/{vote.Needed} listeners voted, so {MusicFormat.Link(current.Display)} was skipped."));
 
             if (vote.Duplicate)
                 return MusicReply.Private(Embeds.Info("Already voted",
                     $"You already voted to skip. **{vote.Votes}/{vote.Needed}** votes so far."));
 
             return MusicReply.Public(Embeds.Info("🗳️ Vote to skip",
-                $"{member.Mention} wants to skip {MusicFormat.Link(current.Track)}.\n" +
+                $"{member.Mention} wants to skip {MusicFormat.Link(current.Display)}.\n" +
                 $"**{vote.Votes}/{vote.Needed}** votes — use `/skip` or the Skip button to vote."));
         }
 
@@ -183,7 +183,7 @@ namespace CommunityBot.Services.Music
                     $"The queue has {player.QueueCount} song(s). Check `/queue` for the numbers."));
 
             return MusicReply.Public(Embeds.Info("🗑️ Removed",
-                $"{member.Mention} removed {MusicFormat.Link(removed.Track)} from the queue."));
+                $"{member.Mention} removed {MusicFormat.Link(removed.Display)} from the queue."));
         }
 
         public static MusicReply Queue(ulong guildId, int page)
@@ -199,16 +199,16 @@ namespace CommunityBot.Services.Music
 
             var text = new StringBuilder();
             if (player.Current is { } current)
-                text.AppendLine($"**Now:** {MusicFormat.Link(current.Track)} `{MusicFormat.Duration(current.Track.Duration)}`")
+                text.AppendLine($"**Now:** {MusicFormat.Link(current.Display)} `{MusicFormat.Duration((current.Playable ?? current.Display).Duration)}`")
                     .AppendLine();
 
             if (queue.Count == 0)
                 text.Append("*The queue is empty.* Add songs with `/play`.");
 
             foreach (var (entry, index) in queue.Select((e, i) => (e, i)).Skip((page - 1) * perPage).Take(perPage))
-                text.AppendLine($"`{index + 1}.` {MusicFormat.Link(entry.Track)} `{MusicFormat.Duration(entry.Track.Duration)}` · <@{entry.RequesterId}>");
+                text.AppendLine($"`{index + 1}.` {MusicFormat.Link(entry.Display)} `{MusicFormat.Duration((entry.Playable ?? entry.Display).Duration)}` · <@{entry.RequesterId}>");
 
-            var total = TimeSpan.FromSeconds(queue.Sum(e => e.Track.Duration.TotalSeconds));
+            var total = TimeSpan.FromSeconds(queue.Sum(e => (e.Playable ?? e.Display).Duration.TotalSeconds));
             var footer = $"Page {page}/{pages} · {queue.Count} song(s) · {MusicFormat.Duration(total)} total";
             if (player.Loop != LoopMode.Off)
                 footer += player.Loop == LoopMode.Track ? " · 🔂 track loop" : " · 🔁 queue loop";
@@ -227,21 +227,26 @@ namespace CommunityBot.Services.Music
             if (player?.Current is not { } current)
                 return MusicReply.Private(Embeds.Info("Nothing is playing", "Use `/play` to start some music."));
 
+            // A duracao que vale e a do que TOCA: a gravacao casada com um
+            // link do Spotify nem sempre tem o mesmo tamanho.
+            var length = (current.Playable ?? current.Display).Duration;
             var position = player.Position;
-            if (position > current.Track.Duration)
-                position = current.Track.Duration;
+            if (position > length)
+                position = length;
 
             var embed = new DiscordEmbedBuilder()
                 .WithAuthor(player.IsPaused ? "Paused" : "Now playing")
-                .WithDescription($"**{MusicFormat.Link(current.Track)}**\n\n" +
-                                 $"{MusicFormat.ProgressBar(position, current.Track.Duration)}\n" +
-                                 $"`{MusicFormat.Duration(position)} / {MusicFormat.Duration(current.Track.Duration)}`")
+                .WithDescription($"**{MusicFormat.Link(current.Display)}**\n\n" +
+                                 $"{MusicFormat.ProgressBar(position, length)}\n" +
+                                 $"`{MusicFormat.Duration(position)} / {MusicFormat.Duration(length)}`")
                 .AddField(new DiscordEmbedField("Requested by", $"<@{current.RequesterId}>", true))
                 .AddField(new DiscordEmbedField("Volume", $"{player.Volume}%", true))
                 .AddField(new DiscordEmbedField("Up next", player.QueueCount.ToString(), true))
+                .AddField(new DiscordEmbedField("Source", MusicFormat.SourceLine(current), true))
                 .WithColor(MusicFormat.Color);
 
-            if (Uri.TryCreate(current.Track.ThumbnailUrl, UriKind.Absolute, out var thumb) && thumb.Scheme == Uri.UriSchemeHttps)
+            if (Uri.TryCreate(current.Display.ThumbnailUrl ?? current.Playable?.ThumbnailUrl, UriKind.Absolute, out var thumb) &&
+                thumb.Scheme == Uri.UriSchemeHttps)
                 embed.WithThumbnail(thumb.AbsoluteUri);
 
             return MusicReply.Public(embed.Build());

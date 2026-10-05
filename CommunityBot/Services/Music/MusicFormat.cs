@@ -16,8 +16,27 @@ namespace CommunityBot.Services.Music
 
         public static readonly DiscordColor Color = new(0xE0457B);
 
+        /// <summary>"3:45", "1:02:03"; "?:??" para faixa de set ainda nao consultada.</summary>
         public static string Duration(TimeSpan t) =>
-            t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes}:{t.Seconds:00}";
+            t == TimeSpan.Zero ? "?:??"
+            : t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes}:{t.Seconds:00}";
+
+        public static string SourceName(TrackSource source) => source switch
+        {
+            TrackSource.SoundCloud => "SoundCloud",
+            TrackSource.Spotify => "Spotify",
+            _ => "YouTube"
+        };
+
+        /// <summary>
+        /// De onde a faixa veio e de onde ela toca: "YouTube", "SoundCloud" ou,
+        /// para o Spotify, "Spotify → SoundCloud" com link para a faixa que de
+        /// fato toca - quem ouvir algo diferente do esperado ve na hora por que.
+        /// </summary>
+        public static string SourceLine(QueuedTrack entry) =>
+            entry.Track.Source == TrackSource.Spotify && entry.Playable is { } playable
+                ? $"Spotify → [{SourceName(playable.Source)}]({playable.WebpageUrl})"
+                : SourceName(entry.Track.Source);
 
         public static string ProgressBar(TimeSpan position, TimeSpan total, int width = 16)
         {
@@ -36,18 +55,22 @@ namespace CommunityBot.Services.Music
 
         public static DiscordEmbed NowPlaying(QueuedTrack entry, LoopMode loop, int upcoming)
         {
-            var track = entry.Track;
+            var track = entry.Display;
+            var playing = entry.Playable ?? track;
             var embed = new DiscordEmbedBuilder()
                 .WithAuthor("Now playing")
                 .WithDescription($"**{Link(track)}**")
-                .AddField(new DiscordEmbedField("Duration", Duration(track.Duration), true))
+                .AddField(new DiscordEmbedField("Duration", Duration(playing.Duration), true))
                 .AddField(new DiscordEmbedField("Requested by", $"<@{entry.RequesterId}>", true))
+                .AddField(new DiscordEmbedField("Source", SourceLine(entry), true))
                 .WithColor(Color);
 
             if (!string.IsNullOrWhiteSpace(track.Uploader))
-                embed.AddField(new DiscordEmbedField("Channel", Embeds.SafeTrim(track.Uploader, 100), true));
+                embed.AddField(new DiscordEmbedField(track.Source == TrackSource.Spotify ? "Artist" : "By",
+                    Embeds.SafeTrim(track.Uploader, 100), true));
 
-            if (Uri.TryCreate(track.ThumbnailUrl, UriKind.Absolute, out var thumb) && thumb.Scheme == Uri.UriSchemeHttps)
+            var thumbnail = track.ThumbnailUrl ?? playing.ThumbnailUrl;
+            if (Uri.TryCreate(thumbnail, UriKind.Absolute, out var thumb) && thumb.Scheme == Uri.UriSchemeHttps)
                 embed.WithThumbnail(thumb.AbsoluteUri);
 
             var footer = upcoming == 0 ? "Nothing else in the queue" : $"{upcoming} more in the queue";

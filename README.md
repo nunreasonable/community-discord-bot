@@ -114,7 +114,7 @@ Sem isso o bot sobe com tickets, avisos e configuração por servidor zerados.
 
 ## Config
 
-O arquivo tem **quatro** chaves. Todo o resto — canal de log, armadilha do softban
+O arquivo tem **cinco** chaves. Todo o resto — canal de log, armadilha do softban
 automático, tickets, cargos da verificação Roblox — é **por servidor** e se
 configura pelo comando `/config`, por quem tem **Gerenciar Servidor**, sem
 acesso a esta máquina.
@@ -124,7 +124,8 @@ acesso a esta máquina.
 | `token` | Token da aplicação. |
 | `guildIds` | Atalho de desenvolvimento. **Deixe vazio**: os comandos são registrados globalmente e valem em todo servidor, inclusive nos que o bot entrar depois. Ver abaixo. |
 | `robloxVerify` | Ligação com o Worker da verificação Roblox: `startUrl`, `resultUrl` e `apiSecret`. Sem o `apiSecret` o `/verify` responde que a verificação está indisponível e nada mais muda. Ver [Verificação Roblox](#verificação-roblox). |
-| `music` | Caminho do yt-dlp e do ffmpeg, runtime JS e os limites da música (duração máxima da faixa, tamanho da fila, tamanho do arquivo, tempo ocioso antes de sair). São da **instalação**, e não por servidor, porque todos falam do disco e da banda desta máquina. Ver [Música](#música). |
+| `music` | Caminho do yt-dlp e do ffmpeg, runtime JS e os limites da música (duração máxima do que é baixado e do que é transmitido, tamanho da fila e por link, tamanho do arquivo, tempo ocioso antes de sair). São da **instalação**, e não por servidor, porque todos falam do disco e da banda desta máquina. Ver [Música](#música). |
+| `gitFeed` | Repositório git desta máquina e o canal que recebe o resumo de cada commit novo. Opcional; ver [Feed de commits](#feed-de-commits). |
 
 ### Onde os comandos são registrados
 
@@ -389,19 +390,44 @@ dono do servidor nem de quem está acima dele — limite do próprio Discord.
 `/play` `/skip` `/stop` `/pause` `/resume` `/queue` `/nowplaying` `/volume`
 `/loop` `/shuffle` `/remove`
 
-O `/play` aceita um link do YouTube ou um texto para buscar. O bot **baixa o
-áudio inteiro** com o yt-dlp para o `/tmp` privado da unit (`PrivateTmp=yes`),
-toca no canal de voz e **apaga o arquivo** assim que a faixa acaba — pulada,
-parada ou tocada até o fim. A fila guarda só metadado, em memória. Para a troca
-de faixa não esperar o download, a próxima é baixada enquanto a atual toca: no
+O `/play` aceita link do **YouTube**, do **SoundCloud** e do **Spotify** — faixa,
+playlist, álbum ou set — ou um texto para buscar (no YouTube, ou no SoundCloud
+com `search_on`). Cada fonte toca de um jeito:
+
+- **YouTube é o caso especial: é sempre baixado antes de tocar.** O yt-dlp baixa
+  o áudio inteiro para o `/tmp` privado da unit (`PrivateTmp=yes`), a voz toca o
+  arquivo e ele é **apagado** assim que a faixa acaba — pulada, parada ou tocada
+  até o fim. Nunca há streaming direto do YouTube: é o que separa este bot dos
+  que o Discord e o Google derrubaram por isso.
+- **SoundCloud toca por streaming.** O yt-dlp só dá a URL do áudio (HLS),
+  pedida na hora de tocar porque ela expira, e o ffmpeg lê direto dela — restrito
+  a HTTPS e com reconexão. Nada vai para o disco. Faixa **Go+** é recusada: sem
+  assinatura o SoundCloud só entrega uma prévia de 30 s.
+- **Spotify não entrega áudio** (DRM). O bot lê o nome, os artistas e a duração
+  da página pública de embed (sem chave de API) e procura a mesma música
+  **primeiro no SoundCloud**, com regra dura — duração em 3 s/3 %, nome no
+  título, artista como quem subiu ou no título, e nada de cover, remix, karaokê,
+  backing track, sped up e afins que o Spotify não diga —, e **senão no YouTube
+  Music** (seção de músicas, que traz a gravação oficial primeiro), que aí segue
+  a regra do YouTube e é baixado. O aviso de "Now playing" mostra de onde veio
+  (`Spotify → YouTube`), com link. Música comercial quase nunca está no
+  SoundCloud oficial, então na prática a maioria cai no YouTube. Se o Spotify
+  mudar o formato da página de embed, é ali que quebra, com uma linha
+  `[musica] falha: o embed do Spotify mudou de formato` no log.
+
+A fila guarda só metadado, em memória. Playlist, álbum e set entram com até 50
+faixas por link, e cada faixa só é buscada (e baixada, se for YouTube) quando
+chega a vez dela: a próxima é preparada enquanto a atual toca, então há no
 máximo dois arquivos por servidor no disco. O que sobrar de uma execução que
 morreu no meio é apagado na subida seguinte.
 
-- **Só YouTube.** Link de qualquer outro site é recusado antes de chegar ao
-  yt-dlp: o extrator genérico dele baixa o que for apontado, inclusive endereço
-  interno desta rede. O download parte sempre da URL canônica que a busca
-  devolveu, nunca do texto digitado. Playlist e live também são recusadas.
-- **Limites** no `music` do config: 15 minutos por faixa, 50 na fila, 60 MB
+- **Só essas três fontes.** Link de qualquer outro site é recusado antes de
+  chegar ao yt-dlp: o extrator genérico dele baixa o que for apontado, inclusive
+  endereço interno desta rede. Link curto (`on.soundcloud.com`, `spotify.link`)
+  é seguido pelo cliente HTTP do bot, e o destino passa pela mesma lista.
+  Playlist do YouTube e live continuam recusadas.
+- **Limites** no `music` do config: 15 minutos por vídeo do YouTube (é o que
+  ocupa disco), 3 horas pelo streaming, 50 músicas na fila, 50 por link, 60 MB
   por arquivo e 2 minutos com a fila vazia ou o canal sem ninguém antes de sair.
 - **Quem manda.** Pula, para, pausa e mexe no volume sem votação quem pediu a
   faixa atual, quem tem **Move Members** no canal de voz ou quem está sozinho com
@@ -463,6 +489,29 @@ usuário, mensagens de exceção e caminhos da máquina, e o buffer é do proces
 inteiro: com o bot em vários servidores, "administrador do servidor" deixou de
 ser um portão, já que qualquer pessoa cria um servidor e convida o bot para
 ser administradora nele. Ele não aparece no `/help` pelo mesmo motivo.
+
+### Feed de commits
+
+Não é comando: é o bot postando num canal o resumo de cada commit novo de um
+repositório git **desta máquina** — hoje, o Blood Oath (`~/daeesewrkspc/Blos`)
+no canal da equipe. Cada resumo traz a mensagem do commit, os arquivos mais
+mexidos com `+`/`-` e o `.patch` completo em anexo (se couber em 8 MB).
+
+- **Por varredura, a cada 30 s**, e não por hook de `post-commit`: o último
+  commit postado fica em `data/git-feed.json`, então o que foi commitado com o
+  bot fora do ar sai na volta seguinte. Mais de 10 de uma vez, saem os 10 mais
+  recentes. Histórico reescrito (amend, rebase) posta só a ponta nova.
+- **Só lê.** Nada de fetch, checkout ou lock (`GIT_OPTIONAL_LOCKS=0`): commitar
+  no repositório nunca tropeça no bot.
+- **Só commits.** Com o Rojo o que vale é o disco, então o que é mexido apenas
+  dentro do Studio (terreno, peças do Workspace) não aparece.
+- **Mora no `config.jsonc`, não no `/config`**: o repositório só existe aqui, e
+  nenhum outro servidor onde o Sollarety está deve poder ligar isso. Na primeira
+  volta com um repositório novo ele posta só o commit mais recente, como prova
+  de que o canal está certo.
+- O canal precisa ser **privado**: o `.patch` entrega o código do servidor do
+  jogo a quem lê. A mensagem do commit não notifica ninguém (`@everyone` nela
+  vira texto).
 
 ## Termos e Privacidade
 

@@ -138,7 +138,7 @@ namespace CommunityBot.Services.Music
 
         private static async Task<string> ProbeFfmpegAsync(MusicSettings settings)
         {
-            var result = await YtDlp.RunAsync(settings.ffmpegPath, new[] { "-hide_banner", "-version" },
+            var result = await ProcessRunner.RunAsync(settings.ffmpegPath, new[] { "-hide_banner", "-version" },
                 TimeSpan.FromSeconds(15), CancellationToken.None);
             if (result.ExitCode != 0)
                 throw new InvalidOperationException($"ffmpeg -version saiu com {result.ExitCode}");

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityBot.Services;
@@ -14,9 +15,11 @@ using DisCatSharp.Enums.Core;
 namespace CommunityBot.commands
 {
     /// <summary>
-    /// Musica do YouTube: o bot baixa o audio com o yt-dlp, toca no canal de voz
-    /// e apaga o arquivo logo depois. Nada de audio fica guardado - a fila e so
-    /// metadado, em memoria.
+    /// Musica do YouTube, do SoundCloud e do Spotify. Video do YouTube e BAIXADO
+    /// com o yt-dlp, tocado e apagado logo depois - nunca transmitido direto.
+    /// SoundCloud toca por streaming. Link do Spotify vira a mesma musica no
+    /// SoundCloud ou, se nao bater, no YouTube. Nada de audio fica guardado - a
+    /// fila e so metadado, em memoria.
     ///
     /// Todo comando daqui exige servidor: canal de voz so existe la. As regras de
     /// quem pode o que moram no MusicActions, compartilhadas com os botoes.
@@ -27,12 +30,19 @@ namespace CommunityBot.commands
         private const string LoopTrack = "track";
         private const string LoopQueue = "queue";
 
-        [SlashCommand("play", "Play a song from YouTube — paste a link or type what to search for")]
+        private const string SearchYouTube = "youtube";
+        private const string SearchSoundCloud = "soundcloud";
+
+        [SlashCommand("play", "Play from YouTube, SoundCloud or Spotify — paste a link or type what to search for")]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 15, CooldownBucketType.User)]
         public async Task PlayCommand(
             InteractionContext ctx,
-            [Option("song", "A YouTube link, or what to search for")] string busca)
+            [Option("song", "A YouTube, SoundCloud or Spotify link (tracks, playlists, albums), or a search")] string busca,
+            [Choice("YouTube", SearchYouTube)]
+            [Choice("SoundCloud", SearchSoundCloud)]
+            [Option("search_on", "Where to search when you type a name instead of a link (default: YouTube)")]
+            string ondeBuscar = SearchYouTube)
         {
             var guild = ctx.Guild!;
             var member = ctx.Member!;
@@ -83,10 +93,11 @@ namespace CommunityBot.commands
 
             var settings = await MusicService.ReadSettingsAsync();
 
-            TrackInfo track;
+            MusicSources.Request request;
             try
             {
-                track = await YtDlp.ResolveAsync(busca, settings, CancellationToken.None);
+                var searchSource = ondeBuscar == SearchSoundCloud ? TrackSource.SoundCloud : TrackSource.YouTube;
+                request = await MusicSources.ResolveAsync(busca, searchSource, settings, CancellationToken.None);
             }
             catch (MusicException ex)
             {
@@ -111,30 +122,17 @@ namespace CommunityBot.commands
                 return;
             }
 
-            if (!player.TryEnqueue(new QueuedTrack(track, member.Id, member.DisplayName), settings.MaxQueue, out var position))
+            var entries = request.Tracks.Select(t => new QueuedTrack(t, member.Id, member.DisplayName)).ToList();
+            var added = player.TryEnqueue(entries, settings.MaxQueue, out var position);
+            if (added == 0)
             {
                 await FailAfterDeferAsync(ctx, "The queue is full",
                     $"There are already {settings.MaxQueue} songs waiting. Try again once a few have played.");
                 return;
             }
 
-            var embed = new DiscordEmbedBuilder()
-                .WithColor(MusicFormat.Color)
-                .WithFooter($"Requested by {member.DisplayName}");
-
-            if (position == 0)
-                embed.WithTitle("🎶 Starting up")
-                    .WithDescription($"{MusicFormat.Link(track)} `{MusicFormat.Duration(track.Duration)}`\n" +
-                                     "Downloading it now — it'll start in a few seconds.");
-            else
-                embed.WithTitle("➕ Added to the queue")
-                    .WithDescription($"{MusicFormat.Link(track)} `{MusicFormat.Duration(track.Duration)}`\n" +
-                                     $"Position **#{position}**.");
-
-            if (Uri.TryCreate(track.ThumbnailUrl, UriKind.Absolute, out var thumb) && thumb.Scheme == Uri.UriSchemeHttps)
-                embed.WithThumbnail(thumb.AbsoluteUri);
-
-            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed.Build()));
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(
+                AddedEmbed(request, added, position, settings, member.DisplayName)));
         }
 
         [SlashCommand("skip", "Skip the current song (or vote to skip it)")]
@@ -216,6 +214,58 @@ namespace CommunityBot.commands
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public Task NowPlayingCommand(InteractionContext ctx) =>
             RespondAsync(ctx, MusicActions.NowPlaying(ctx.Guild!.Id));
+
+        /// <summary>O "vai tocar" / "entrou na fila" do /play, para uma faixa ou uma lista.</summary>
+        private static DiscordEmbed AddedEmbed(MusicSources.Request request, int added, int position,
+            CommunityBot.config.MusicSettings settings, string requester)
+        {
+            var embed = new DiscordEmbedBuilder()
+                .WithColor(MusicFormat.Color)
+                .WithFooter($"Requested by {requester}");
+
+            var first = request.Tracks[0];
+
+            if (request.CollectionName is null)
+            {
+                // O que acontece ate a musica comecar depende da fonte - e e o
+                // que explica os segundos de espera.
+                var startNote = first.Source switch
+                {
+                    TrackSource.YouTube => "Downloading it now — it'll start in a few seconds.",
+                    TrackSource.Spotify => "Finding it on SoundCloud or YouTube — it'll start in a few seconds.",
+                    _ => "Starting the stream now."
+                };
+
+                var line = $"{MusicFormat.Link(first)} `{MusicFormat.Duration(first.Duration)}`";
+                if (first.Source == TrackSource.Spotify && !string.IsNullOrWhiteSpace(first.Uploader))
+                    line += $" · {Embeds.SafeTrim(first.Uploader, 100)}";
+
+                if (position == 0)
+                    embed.WithTitle("🎶 Starting up").WithDescription($"{line}\n{startNote}");
+                else
+                    embed.WithTitle("➕ Added to the queue").WithDescription($"{line}\nPosition **#{position}**.");
+
+                if (Uri.TryCreate(first.ThumbnailUrl, UriKind.Absolute, out var thumb) && thumb.Scheme == Uri.UriSchemeHttps)
+                    embed.WithThumbnail(thumb.AbsoluteUri);
+
+                return embed.Build();
+            }
+
+            var text = $"From **{Embeds.SafeTrim(request.CollectionName, 150)}** on {MusicFormat.SourceName(request.Source)}.\n" +
+                       (position == 0 ? "The first one is starting now." : $"They start at position **#{position}**.");
+
+            // O que ficou de fora e dito, e por que: limite por link ou fila cheia.
+            var leftOut = request.Tracks.Count - added;
+            if (request.Truncated > 0)
+                text += $"\n-# Only the first {settings.MaxPlaylist} tracks of a link are added.";
+            if (leftOut > 0)
+                text += $"\n-# {leftOut} more didn't fit — the queue holds {settings.MaxQueue} songs.";
+
+            if (Uri.TryCreate(first.ThumbnailUrl, UriKind.Absolute, out var cover) && cover.Scheme == Uri.UriSchemeHttps)
+                embed.WithThumbnail(cover.AbsoluteUri);
+
+            return embed.WithTitle($"➕ Added {added} song{(added == 1 ? "" : "s")}").WithDescription(text).Build();
+        }
 
         private static Task RespondAsync(InteractionContext ctx, MusicReply reply)
         {

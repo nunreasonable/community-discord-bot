@@ -149,6 +149,11 @@ namespace CommunityBot
             // o que falta. Roda os processos fora do caminho do gateway.
             Client.GuildDownloadCompleted += MusicService.ReportStatusAsync;
 
+            // Feed de commits de um repositorio local para um canal. Liga na
+            // primeira carga dos servidores (o canal precisa estar no cache) e
+            // fica inerte sem a secao "gitFeed" no config.
+            Client.GuildDownloadCompleted += GitFeed.StartAsync;
+
             // Recolhe os comandos de guild que sobraram da epoca em que o bot
             // vivia num servidor so. Sem isto, o servidor que estava em guildIds
             // mostra cada comando DUAS vezes depois da troca para global - e a
@@ -407,6 +412,11 @@ namespace CommunityBot
             // Sai dos canais de voz e apaga o audio baixado antes de largar o
             // gateway. Cabe no TimeoutStopSec=30 junto com a espera de cima.
             await MusicService.DrainAsync(TimeSpan.FromSeconds(8));
+
+            // Para a varredura do feed de commits. Um post pela metade so faz o
+            // mesmo commit sair de novo na proxima subida - o ultimo postado so
+            // e gravado depois do envio.
+            GitFeed.Stop();
 
             Console.WriteLine("[shutdown] sinal recebido; desconectando do gateway...");
             try
