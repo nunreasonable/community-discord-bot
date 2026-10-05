@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 using CommunityBot.commands;
 using CommunityBot.config;
 using CommunityBot.Services;
+using CommunityBot.Services.Economy;
 using CommunityBot.Services.Fun;
+using CommunityBot.Services.Levels;
 using CommunityBot.Services.Music;
 using CommunityBot.Services.Roblox;
 using DisCatSharp;
@@ -104,6 +106,11 @@ namespace CommunityBot
             // autoSoftbanChannelId nao estiverem no config.
             Client.MessageCreated += AutoSoftban.OnMessageCreated;
 
+            // XP por mensagem, nos servidores que ligaram /config leveling. Olha
+            // so autor, servidor e tipo da mensagem - o texto nem chega, sem o
+            // intent de Message Content. Inerte onde o nivel esta desligado.
+            Client.MessageCreated += LevelService.OnMessageCreated;
+
             // Diz na subida se o vigia esta ligado e, se nao estiver funcionando,
             // por que. Sem isto, canal errado, canal invisivel e canal de forum
             // produzem o mesmo silencio que "ninguem escreveu la".
@@ -128,6 +135,10 @@ namespace CommunityBot
             // Botoes dos comandos fun: o "Return" do /roleplay e o tabuleiro do
             // /tictactoe. Handled so para "rp:" e "ttt:".
             Client.ComponentInteractionCreated += FunComponents.OnComponent;
+
+            // Yes/No da DM de level up ("lvl:") e confirmacao do /pay ("eco:").
+            Client.ComponentInteractionCreated += LevelService.OnComponent;
+            Client.ComponentInteractionCreated += EconomyComponents.OnComponent;
 
             // Bot expulso do canal de voz e canal que esvazia. Nao ha evento de
             // desconexao publico na biblioteca de voz; e por aqui que se sabe.
@@ -349,6 +360,13 @@ namespace CommunityBot
             // lista vazia.
             await RobloxLinkStore.Instance.LoadAsync();
 
+            // XP e carteiras. Antes de conectar pelo mesmo motivo: a primeira
+            // mensagem depois do connect ja soma XP. Arquivo corrompido derruba a
+            // subida de proposito, como nos outros armazenamentos - subir com
+            // "ninguem tem nada" e o proximo flush apagariam tudo.
+            await LevelStore.Instance.LoadAsync();
+            await EconomyStore.Instance.LoadAsync();
+
             // Audio que sobrou de uma execucao que morreu no meio de uma faixa.
             MusicService.CleanTempRoot();
 
@@ -428,6 +446,19 @@ namespace CommunityBot
                 Console.WriteLine($"[shutdown] falha ao desconectar: {ex.Message}");
             }
 
+            // O XP vai para o disco a cada 30s; aqui sai o que faltava. Depois do
+            // DisconnectAsync, quando nenhuma mensagem nova chega para mudar o
+            // XP no meio da gravacao. (A economia grava a cada mudanca.)
+            LevelStore.Instance.StopTimer();
+            try
+            {
+                await LevelStore.Instance.FlushAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[shutdown] falha ao gravar o XP: {ex.Message}");
+            }
+
             // Drena a ultima linha parcial do tee antes de sair.
             Console.Out.Flush();
         }
@@ -485,6 +516,10 @@ namespace CommunityBot
                 slash.RegisterGlobalCommands<TextCommands>();
                 slash.RegisterGlobalCommands<MorseCommands>();
                 slash.RegisterGlobalCommands<Games>();
+                slash.RegisterGlobalCommands<Levels>();
+                slash.RegisterGlobalCommands<XpCommands>();
+                slash.RegisterGlobalCommands<Economy>();
+                slash.RegisterGlobalCommands<Profile>();
                 return;
             }
 
@@ -502,6 +537,10 @@ namespace CommunityBot
             slash.RegisterGuildCommands<TextCommands>(guildId.Value);
             slash.RegisterGuildCommands<MorseCommands>(guildId.Value);
             slash.RegisterGuildCommands<Games>(guildId.Value);
+            slash.RegisterGuildCommands<Levels>(guildId.Value);
+            slash.RegisterGuildCommands<XpCommands>(guildId.Value);
+            slash.RegisterGuildCommands<Economy>(guildId.Value);
+            slash.RegisterGuildCommands<Profile>(guildId.Value);
         }
 
         /// <summary>

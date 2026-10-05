@@ -34,6 +34,12 @@ namespace CommunityBot.Services
         public int minAccountAgeDays { get; set; }
         public List<GroupBind> groupBinds { get; set; } = new();
 
+        // Niveis e economia: desligados ate quem administra o servidor ligar.
+        // A ausencia da chave no arquivo vira false, entao servidores antigos
+        // nao ganham nada sem pedir.
+        public bool levelingEnabled { get; set; }
+        public bool economyEnabled { get; set; }
+
         public DateTimeOffset? updatedAtUtc { get; set; }
         public ulong? updatedById { get; set; }
 
@@ -52,6 +58,8 @@ namespace CommunityBot.Services
             // Copia PROFUNDA: o snapshot e lido fora do lock, e uma lista
             // compartilhada com o mutador poderia ser vista pela metade.
             groupBinds = (groupBinds ?? new()).Select(b => b.Copy()).ToList(),
+            levelingEnabled = levelingEnabled,
+            economyEnabled = economyEnabled,
             updatedAtUtc = updatedAtUtc,
             updatedById = updatedById
         };

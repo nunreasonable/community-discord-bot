@@ -115,7 +115,7 @@ Sem isso o bot sobe com tickets, avisos e configuração por servidor zerados.
 ## Config
 
 O arquivo tem **cinco** chaves. Todo o resto — canal de log, armadilha do softban
-automático, tickets, cargos da verificação Roblox — é **por servidor** e se
+automático, tickets, cargos da verificação Roblox, níveis e economia — é **por servidor** e se
 configura pelo comando `/config`, por quem tem **Gerenciar Servidor**, sem
 acesso a esta máquina.
 
@@ -162,6 +162,7 @@ Toda entrada em servidor novo rende uma linha no log, com nome, id e tamanho.
 `/config tickets-category` `/config tickets-role` `/config tickets-log`
 `/config verify-role` `/config verify-unverified-role`
 `/config verify-nickname` `/config verify-min-age`
+`/config leveling` `/config economy`
 
 Cada subcomando mexe numa chave e tem uma opção opcional, onde **omitir a opção
 limpa o valor**. Um comando só com várias opções opcionais seria mais curto e
@@ -442,6 +443,54 @@ morreu no meio é apagado na subida seguinte.
   a estável quando sair a 10.7.1. Se a libdave faltar, o log mostra "DAVE
   disabled" — é a primeira coisa a procurar se o bot entrar mudo.
 - O bot **não ouve** ninguém: a voz é só de envio (`EnableIncoming = false`).
+
+### Níveis
+`/rank` `/leaderboard` `/profile` `/level-dms` `/xp give` `/xp take`
+
+Desligado até alguém com **Manage Server** dar `/config leveling enabled:True`.
+Ligado, cada mensagem vale de 15 a 25 XP, no máximo uma vez por minuto por
+pessoa por servidor, e a curva é a do MEE6: do nível L para o L+1 são
+`5L² + 50L + 100` XP (nível 1 com 100, nível 10 com 4.675). Mensagem de bot, de
+webhook e de sistema não conta. O bot continua **sem Message Content**: o XP
+conta que alguém escreveu, nunca o que escreveu.
+
+- **DM de level up.** Quem sobe de nível recebe uma DM perguntando "Would you
+  like to keep receiving these DMs?", com **Yes** e **No**. O No desliga para
+  sempre (em todo servidor), e o `/level-dms` religa. DM fechada é ignorada em
+  silêncio. Subir por `/xp give` também avisa.
+- **`/xp give` e `/xp take`** exigem Manage Server, vão de 1 a 1.000.000 e
+  entram no log de moderação. O XP nunca fica negativo.
+- **Rankings.** `/leaderboard` por servidor ou global; o global soma o XP dos
+  servidores com nível **ligado**. Desligar não apaga nada: o XP fica guardado,
+  para de crescer e o servidor sai das contas globais.
+- **Gravação.** O XP vive em memória e vai para `data/levels.json` a cada 30 s
+  e no desligamento. Os outros armazenamentos regravam o arquivo inteiro a cada
+  mudança, o que não serve para algo que muda a cada mensagem; o preço é perder
+  no máximo 30 s de XP num crash.
+
+### Economia
+`/daily` `/work` `/pay` `/balance` (+ `/leaderboard board:SOL$` e `/profile`)
+
+Desligada até `/config economy enabled:True`. A moeda é o **SOL$**, e a
+carteira é **global**, como os sonhos da Loritta: o mesmo saldo vale em todo
+servidor com a economia ligada. Desligar num servidor só tira os comandos de lá;
+ninguém perde saldo.
+
+- **`/daily`**: uma vez por dia UTC. 500 SOL$, mais 50 por dia seguido de
+  sequência, até 1.000. Pular um dia zera a sequência.
+- **`/work`**: uma vez por hora, de 80 a 250 SOL$, com um "emprego" sorteado.
+- **`/pay`**: pede confirmação num botão que só quem paga pode apertar. O botão
+  carrega só uma chave aleatória — valor, origem e destino ficam na memória do
+  bot, porque custom id vem do cliente e não dá para confiar nele. O pedido vale
+  2 minutos e uma vez, o saldo é conferido de novo no clique, e débito e crédito
+  saem na mesma gravação.
+- **Gravação.** `data/economy.json` é regravado **a cada mudança**, numa cópia
+  que só vira o estado oficial depois que o disco aceitou. Dinheiro muda pouco e
+  vale mais que um minuto de conversa.
+
+O `/profile` junta tudo: nível no servidor e global, carteira, sequência do
+daily, em quantos servidores a pessoa sobe de nível e as datas da conta. Cada
+parte só aparece onde o servidor ligou o sistema dela (em DM, só o global).
 
 ### Diversão
 `/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/ship` `/rate` `/cancel` `/say`

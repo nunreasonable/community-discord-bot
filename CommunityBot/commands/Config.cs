@@ -68,7 +68,11 @@ namespace CommunityBot.commands
                 .AddField(new DiscordEmbedField("Verification — minimum age",
                     settings?.minAccountAgeDays is > 0 and var days ? $"{days} day(s)" : "off", true))
                 .AddField(new DiscordEmbedField("Group binds",
-                    settings?.groupBinds is { Count: > 0 } binds ? $"{binds.Count} (`/bind list`)" : "— *(`/bind add`)*", true));
+                    settings?.groupBinds is { Count: > 0 } binds ? $"{binds.Count} (`/bind list`)" : "— *(`/bind add`)*", true))
+                .AddField(new DiscordEmbedField("Levels",
+                    settings?.levelingEnabled == true ? "on" : "off *(`/config leveling`)*", true))
+                .AddField(new DiscordEmbedField("Economy",
+                    settings?.economyEnabled == true ? "on" : "off *(`/config economy`)*", true));
 
             var verifyReady = (await VerificationFlow.ReadSettingsAsync()).IsConfigured;
             var pending = Pending(guild, settings, verifyReady);
@@ -255,6 +259,46 @@ namespace CommunityBot.commands
                 : Embeds.Ok("Anti-alt filter on",
                     $"Roblox accounts younger than **{dias} day(s)** can still be linked, but in this server they " +
                     "are treated as unverified: no verified role and no group roles.")));
+        }
+
+        [SlashCommand("leveling", "Turns XP and levels on or off in this server")]
+        public async Task LevelingCommand(InteractionContext ctx,
+            [Option("enabled", "Members earn XP for chatting and can level up")] bool ligado)
+        {
+            await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder().AsEphemeral());
+
+            await GuildSettingsStore.Instance.SetAsync(ctx.Guild!.Id, ctx.User.Id, s => s.levelingEnabled = ligado);
+
+            // Desligar nao apaga nada: o XP fica guardado para quando religar, so
+            // para de crescer e sai do ranking global.
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(ligado
+                ? Embeds.Ok("Levels on",
+                    "Members now earn XP for chatting (once a minute at most) and get a DM when they level up — " +
+                    "they can turn the DM off. Try `/rank`, `/leaderboard` and `/xp give`.")
+                : Embeds.Ok("Levels off",
+                    "Nobody earns XP here anymore and this server leaves the global ranking. The XP already earned is " +
+                    "kept, so turning levels back on picks up where it left off.")));
+        }
+
+        [SlashCommand("economy", "Turns the SOL$ economy on or off in this server")]
+        public async Task EconomyCommand(InteractionContext ctx,
+            [Option("enabled", "Members can use /daily, /work, /pay and /balance here")] bool ligado)
+        {
+            await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource,
+                new DiscordInteractionResponseBuilder().AsEphemeral());
+
+            await GuildSettingsStore.Instance.SetAsync(ctx.Guild!.Id, ctx.User.Id, s => s.economyEnabled = ligado);
+
+            // A carteira e global: ligar ou desligar aqui so decide se os
+            // comandos funcionam NESTE servidor, nunca mexe em saldo de ninguem.
+            await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(ligado
+                ? Embeds.Ok("Economy on",
+                    "Members can now use `/daily`, `/work`, `/pay` and `/balance` here. Wallets are global: the same " +
+                    "SOL$ balance follows each person to every server where the economy is on.")
+                : Embeds.Ok("Economy off",
+                    "The economy commands no longer work in this server. Nobody's wallet changes — balances are global " +
+                    "and stay as they are.")));
         }
 
         /// <summary>

@@ -202,6 +202,10 @@ namespace CommunityBot.commands
                 .AddField(new DiscordEmbedField("Music",
                     "`/play` `/skip` `/stop` `/pause` `/resume` `/queue` `/nowplaying` " +
                     "`/volume` `/loop` `/shuffle` `/remove`", false))
+                .AddField(new DiscordEmbedField("Levels",
+                    "`/rank` `/leaderboard` `/profile` `/level-dms` `/xp give` `/xp take`", false))
+                .AddField(new DiscordEmbedField("Economy (SOL$)",
+                    "`/daily` `/work` `/pay` `/balance` `/leaderboard board:SOL$`", false))
                 .AddField(new DiscordEmbedField("Fun",
                     "`/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/ship` `/rate` `/cancel` `/say`", false))
                 .AddField(new DiscordEmbedField("Roleplay",
@@ -213,7 +217,8 @@ namespace CommunityBot.commands
                     "`/config view` `/config mod-log` `/config auto-softban` " +
                     "`/config tickets-category` `/config tickets-role` `/config tickets-log` " +
                     "`/config verify-role` `/config verify-unverified-role` " +
-                    "`/config verify-nickname` `/config verify-min-age`", false))
+                    "`/config verify-nickname` `/config verify-min-age` " +
+                    "`/config leveling` `/config economy`", false))
                 // Sem /logs: ele e de quem administra o BOT, nao de quem usa o
                 // servidor, e anunciar um comando que so uma pessoa no mundo pode
                 // rodar so rende tentativa recusada.

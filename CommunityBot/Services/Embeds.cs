@@ -72,6 +72,32 @@ namespace CommunityBot.Services
         /// </summary>
         public static string SafeTrim(string? value, int max) => Trim(Safe(value), max);
 
+        /// <summary>
+        /// Nome de pessoa ou servidor mostrado como texto puro: escapa TODA a
+        /// marcacao, e nao so o link mascarado do Safe. Um username com "_" (que
+        /// o Discord permite) viraria italico no meio de um ranking.
+        /// </summary>
+        public static string Plain(string? value, int max)
+        {
+            var text = Trim(value, max);
+            var sb = new System.Text.StringBuilder(text.Length + 8);
+            foreach (var c in text)
+            {
+                if (c is '\\' or '*' or '_' or '~' or '`' or '|' or '>' or '[' or ']' or '(' or ')' or '#' or '-' or '<' or '@')
+                    sb.Append('\\');
+                sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// "1,250" - separador fixo. Com {x:N0} o numero sairia na cultura da
+        /// maquina: a unit roda em en_GB hoje, mas um pt_BR viraria "1.250", que
+        /// em ingles se le como um virgula vinte e cinco.
+        /// </summary>
+        public static string Number(long value) =>
+            value.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+
         /// <summary>Corta preservando o limite do Discord, com reticencias.</summary>
         public static string Trim(string? value, int max)
         {
