@@ -2,7 +2,7 @@
   "// applicationId": "Sollarety. E publico - o mesmo ID que aparece na pagina de convite do site.",
   "applicationId": "1403153848507301939",
   "// imagens": "URL publica, e nao chave de asset. Medido em 21/08/2026: o cliente Discord cacheia a lista de assets da aplicacao, entao logo apos o upload nem o nome ('rp-large') nem o ID resolvem - o cliente descarta assets.large_image e mantem so o large_text. Com URL https o cliente proxia para mp:external/..., que e o mesmo caminho que o proprio Roblox usa, e funciona na hora. As artes sao geradas por filearchive/widget/render.sh no repo do site.",
-  "largeImage": "https://daeese.me/filearchive/onese.jpeg",
+  "largeImage": "https://daeese.me/filearchive/presence/large/idle.png",
   "largeText": "daeese.me",
   "smallImage": "https://daeese.me/filearchive/widget/rp-small.png",
   "smallText": "C# / .NET",
