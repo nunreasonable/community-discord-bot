@@ -19,7 +19,45 @@
     },
     {
       "label": "Sollarety",
-      "url": "https://ccore.daeese.me/fun/"
+      "url": "https://apps.daeese.me/sollarety/"
     }
-  ]
+  ],
+  "// pollSeconds": "Intervalo entre varreduras (VM/codigo). Minimo 5; SET_ACTIVITY so sai quando a atividade muda.",
+  "pollSeconds": 15,
+  "// states": "Cartoes dinamicos. Sem nada detectado vale o cartao de cima (idle). 'vm' tem prioridade e combina com 'coding'. Placeholders: {language} {repo} {badge} (coding); {os} {count} {badge} {language} {repo} (vm). {repo} so existe para repositorio PUBLICO no GitHub; senao usa-se statePrivate/stateCodingPrivate. status_display_type 2 faz a lista de membros mostrar a linha 'details' em vez de 'Watching Sollarety'. Imagens: URL https publica, geradas por filearchive/presence/src/render.sh no repo do site.",
+  "states": {
+    "coding": {
+      "enabled": true,
+      "// recentMinutes": "So conta como programando se algum arquivo do repositorio (ou o HEAD) mudou nesta janela.",
+      "recentMinutes": 20,
+      "details": "Charting new stars",
+      "state": "Writing {language} in {repo}",
+      "statePrivate": "Writing {language} in a private project",
+      "largeImage": "https://daeese.me/filearchive/presence/large/code.png",
+      "largeText": "Sollarety",
+      "smallImage": "https://daeese.me/filearchive/presence/lang/{badge}.png",
+      "smallText": "{language}",
+      "// repoButtonLabels": "Tentados em ordem ate um caber em 32 chars. O outro botao e o primeiro de 'buttons'.",
+      "repoButtonLabels": [
+        "{repo} on GitHub",
+        "GitHub: {repo}",
+        "View on GitHub"
+      ]
+    },
+    "vm": {
+      "enabled": true,
+      "details": "Orbiting {os}",
+      "detailsUnknown": "Orbiting a virtual machine",
+      "state": "in a virtual machine",
+      "stateMany": "in {count} virtual machines",
+      "stateUnknown": "on an uncharted world",
+      "stateCoding": "while writing {language} in {repo}",
+      "stateCodingPrivate": "while writing {language} in a private project",
+      "largeImage": "https://daeese.me/filearchive/presence/large/orbit.png",
+      "largeText": "Sollarety",
+      "smallImage": "https://daeese.me/filearchive/presence/os/{badge}.png",
+      "smallText": "{os}",
+      "smallTextUnknown": "Unknown system"
+    }
+  }
 }

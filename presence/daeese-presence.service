@@ -10,9 +10,12 @@ Type=simple
 WorkingDirectory=/home/daeese/daeesewrkspc/community-discord-bot/presence
 ExecStart=/usr/bin/python3 /home/daeese/daeesewrkspc/community-discord-bot/presence/daeese_presence.py
 
-# Diferente do community-bot.service, aqui nao ha nada de rede: o processo so
-# fala com o socket IPC local do cliente Discord. Por isso tambem nao ha
-# Environment de IPv6.
+# Diferente do community-bot.service, quase nada aqui e rede: o processo fala
+# com o socket IPC local do cliente Discord e, no maximo uma vez a cada 6 h por
+# repositorio, com api.github.com (so para saber se o repo e publico). Esse
+# host so tem IPv4, entao o IPv6 quebrado desta maquina nao atrasa nada e nao
+# ha Environment de IPv6. O script tambem chama virsh/git/osinfo-query, todos
+# com timeout.
 
 # Restart=always, e nao on-failure: sair com codigo 0 porque o Discord estava
 # fechado e o caso comum, nao uma falha. O proprio script ja faz backoff
