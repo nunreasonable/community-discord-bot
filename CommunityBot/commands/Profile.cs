@@ -31,7 +31,9 @@ namespace CommunityBot.commands
 
         private static bool LevelingOn(ulong guildId) => GuildSettingsStore.For(guildId)?.levelingEnabled == true;
 
-        [SlashCommand("profile", "Show someone's Sollarety profile: levels, SOL$ and more")]
+        [SlashCommand("profile", "Show someone's Sollarety profile: levels, SOL$ and more",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task ProfileCommand(
             InteractionContext ctx,
@@ -48,7 +50,9 @@ namespace CommunityBot.commands
 
             await ctx.CreateResponseAsync(InteractionResponseType.DeferredChannelMessageWithSource);
 
-            var guild = ctx.Guild;
+            // So o servidor em que o BOT esta conta: como app pessoal, num
+            // servidor sem o Sollarety, o perfil e o global, como em DM.
+            var guild = CommandScope.BotGuild(ctx.Client, ctx.Guild);
             var settings = guild is null ? null : GuildSettingsStore.For(guild.Id);
             var now = DateTimeOffset.UtcNow;
 
@@ -81,7 +85,7 @@ namespace CommunityBot.commands
             embed.AddField(new DiscordEmbedField("Leveling in",
                 $"{LevelStore.Instance.ActiveGuildCount(target.Id, LevelingOn)} server(s)", true));
 
-            // Carteira: em DM, ou onde a economia esta ligada.
+            // Carteira: em DM (ou como app pessoal), ou onde a economia esta ligada.
             if (guild is null || settings?.economyEnabled == true)
             {
                 var wallet = EconomyStore.Instance.For(target.Id);
@@ -118,7 +122,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed.Build()));
         }
 
-        [SlashCommand("leaderboard", "Top members by level or SOL$, in this server or worldwide")]
+        [SlashCommand("leaderboard", "Top members by level or SOL$, in this server or worldwide", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 15, CooldownBucketType.User)]
         public async Task LeaderboardCommand(

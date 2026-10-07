@@ -28,7 +28,7 @@ namespace CommunityBot.commands
     /// curto e ambiguo: nao daria para distinguir "nao mexa nisso" de "limpe
     /// isso".
     /// </summary>
-    [SlashCommandGroup("config", "Configures the bot for this server", (long)Permissions.ManageGuild)]
+    [SlashCommandGroup("config", "Configures the bot for this server", (long)Permissions.ManageGuild, allowedContexts: new[] { InteractionContextType.Guild })]
     [ApplicationCommandRequireGuild]
     [ApplicationCommandRequireUserPermissions(Permissions.ManageGuild)]
     internal class Config : ApplicationCommandsModule

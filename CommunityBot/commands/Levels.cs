@@ -34,7 +34,7 @@ namespace CommunityBot.commands
             return $"**Level {level}** · {Embeds.Number(into)}/{Embeds.Number(needed)} XP\n`{bar}`";
         }
 
-        [SlashCommand("rank", "Show someone's level and XP in this server")]
+        [SlashCommand("rank", "Show someone's level and XP in this server", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task RankCommand(
@@ -73,7 +73,9 @@ namespace CommunityBot.commands
                     .WithColor(DiscordColor.Gold)));
         }
 
-        [SlashCommand("level-dms", "Turn the DM you get when you level up on or off")]
+        [SlashCommand("level-dms", "Turn the DM you get when you level up on or off",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task LevelDmsCommand(
             InteractionContext ctx,
@@ -94,7 +96,7 @@ namespace CommunityBot.commands
     /// pode corrigi-los. Cada uso vai para o log de moderacao - XP mexe em
     /// ranking, e ranking e o tipo de coisa sobre a qual alguem vai perguntar.
     /// </summary>
-    [SlashCommandGroup("xp", "Give or take XP", (long)Permissions.ManageGuild)]
+    [SlashCommandGroup("xp", "Give or take XP", (long)Permissions.ManageGuild, allowedContexts: new[] { InteractionContextType.Guild })]
     [ApplicationCommandRequireGuild]
     [ApplicationCommandRequireUserPermissions(Permissions.ManageGuild)]
     internal class XpCommands : ApplicationCommandsModule

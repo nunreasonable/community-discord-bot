@@ -43,7 +43,7 @@ namespace CommunityBot.commands
         // que o bot esta, e qualquer pessoa que criasse um servidor e
         // convidasse o bot seria administradora nele. Por isso a checagem de
         // dono da aplicacao no corpo do comando - ver IsApplicationOwner.
-        [SlashCommand("logs", "Show the bot's latest logs", (long)Permissions.Administrator)]
+        [SlashCommand("logs", "Show the bot's latest logs", (long)Permissions.Administrator, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.Administrator)]
         public async Task LogsCommand(
             InteractionContext ctx,

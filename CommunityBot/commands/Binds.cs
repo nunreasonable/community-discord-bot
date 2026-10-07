@@ -21,7 +21,7 @@ namespace CommunityBot.commands
     /// VerificationService.CheckAssignableRole.
     /// </summary>
     [SlashCommandGroup("bind", "Discord roles based on Roblox group and rank",
-        (long)(Permissions.ManageGuild | Permissions.ManageRoles))]
+        (long)(Permissions.ManageGuild | Permissions.ManageRoles), allowedContexts: new[] { InteractionContextType.Guild })]
     [ApplicationCommandRequireGuild]
     [ApplicationCommandRequireUserPermissions(Permissions.ManageGuild | Permissions.ManageRoles)]
     internal class Binds : ApplicationCommandsModule

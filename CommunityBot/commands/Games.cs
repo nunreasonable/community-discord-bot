@@ -31,7 +31,9 @@ namespace CommunityBot.commands
             _ => "✂️ **Scissors**"
         };
 
-        [SlashCommand("rps", "Play rock, paper, scissors against me")]
+        [SlashCommand("rps", "Play rock, paper, scissors against me",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task RpsCommand(
             InteractionContext ctx,
@@ -57,8 +59,9 @@ namespace CommunityBot.commands
                     .WithColor(color)));
         }
 
-        [SlashCommand("tictactoe", "Challenge someone to a game of tic-tac-toe")]
-        [ApplicationCommandRequireGuild]
+        [SlashCommand("tictactoe", "Challenge someone to a game of tic-tac-toe",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(2, 30, CooldownBucketType.User)]
         public async Task TicTacToeCommand(
             InteractionContext ctx,

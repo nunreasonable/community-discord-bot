@@ -115,6 +115,16 @@ namespace CommunityBot.Services.Roblox
             {
                 try
                 {
+                    // O Unlink desfaz um vinculo GLOBAL: vale em DM e como app
+                    // pessoal. So mexe em cargo e apelido quando o bot esta no
+                    // servidor - num servidor sem ele, nao ha o que mexer.
+                    if (id == UnlinkId)
+                    {
+                        var botGuild = CommandScope.BotGuild(client, e.Guild);
+                        await UnlinkAsync(client, interaction, e.User, botGuild, botGuild is null ? null : e.Member);
+                        return;
+                    }
+
                     if (e.Guild is not { } guild || e.Member is not { } member)
                     {
                         await TryFailAsync(interaction, "This only works inside a server.");
@@ -129,10 +139,6 @@ namespace CommunityBot.Services.Roblox
 
                         case CheckId:
                             await CheckAsync(client, interaction, guild, member);
-                            return;
-
-                        case UnlinkId:
-                            await UnlinkAsync(client, interaction, guild, member);
                             return;
 
                         default:
@@ -387,13 +393,13 @@ namespace CommunityBot.Services.Roblox
                 "account: your browser may be logged into a different one."));
         }
 
-        private static async Task UnlinkAsync(DiscordClient client, DiscordInteraction interaction, DiscordGuild guild,
-            DiscordMember member)
+        private static async Task UnlinkAsync(DiscordClient client, DiscordInteraction interaction, DiscordUser user,
+            DiscordGuild? guild, DiscordMember? member)
         {
             await interaction.CreateResponseAsync(InteractionResponseType.DeferredMessageUpdate);
 
-            StopPolling(member.Id);
-            var removed = await RobloxLinkStore.Instance.RemoveAsync(member.Id);
+            StopPolling(user.Id);
+            var removed = await RobloxLinkStore.Instance.RemoveAsync(user.Id);
             if (removed is null)
             {
                 await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(
@@ -402,19 +408,25 @@ namespace CommunityBot.Services.Roblox
                 return;
             }
 
-            Console.WriteLine($"[verificacao] {member.Id} desvinculou {removed.robloxName} ({removed.robloxId})");
+            Console.WriteLine($"[verificacao] {user.Id} desvinculou {removed.robloxName} ({removed.robloxId})");
 
-            var reason = AuditReason.Automatic("Roblox verification: /unverify");
-            var report = await VerificationService.ApplyAsync(client, guild, member, null, reason);
-            await VerificationService.ClearNicknameIfOursAsync(client, guild, member, removed, reason, report);
+            ApplyReport? report = null;
+            if (guild is not null && member is not null)
+            {
+                var reason = AuditReason.Automatic("Roblox verification: /unverify");
+                report = await VerificationService.ApplyAsync(client, guild, member, null, reason);
+                await VerificationService.ClearNicknameIfOursAsync(client, guild, member, removed, reason, report);
+            }
 
             var embed = new DiscordEmbedBuilder()
                 .WithTitle("Account unlinked")
                 .WithColor(DiscordColor.SpringGreen)
                 .WithDescription($"{Describe(removed)} is no longer linked to your Discord account, in any server.\n\n" +
-                                 "In other servers, verification roles are removed on the next `/update`.");
+                                 (guild is null
+                                     ? "In servers that use Sollarety, verification roles are removed on the next `/update`."
+                                     : "In other servers, verification roles are removed on the next `/update`."));
 
-            if (report.Configured)
+            if (report is { Configured: true })
                 embed.AddField(new DiscordEmbedField("In this server", report.Describe(), false));
 
             await interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed), ModifyMode.Replace);

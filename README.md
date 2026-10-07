@@ -187,6 +187,33 @@ Quem pode usar é decidido pelas **permissões do próprio Discord**: o `/ban` s
 aparece para quem tem Ban Members, e assim por diante. Não há cargo para
 configurar à mão.
 
+### Onde cada comando funciona
+
+O Sollarety pode ser adicionado a um servidor **e** aos "My Apps" de uma pessoa
+(instalação de usuário). Cada comando declara as duas coisas ao Discord —
+`allowedContexts` e `integrationTypes` no atributo `[SlashCommand]` —, e o
+Discord só mostra o comando onde ele cabe:
+
+- **Em qualquer lugar** (servidor, DM com o bot, DM entre pessoas, grupo, e
+  servidores onde só a pessoa instalou o app): `/8ball` `/roll` `/coinflip`
+  `/choose` `/avatar` `/ship` `/rate` `/cancel` `/roleplay` `/text` `/morse`
+  `/rps` `/tictactoe` `/profile` `/level-dms` `/userinfo` `/unverify` `/ping`
+  `/help`. São os que não dependem de nada do servidor.
+- **Só em servidor com o Sollarety**: todo o resto — moderação, advertências,
+  tickets, verificação, música, economia, `/rank`, `/leaderboard`, `/say`,
+  `/poll`, `/serverinfo`, `/logs` e o `/config`. Esses nem aparecem fora dele.
+
+Num servidor onde só a pessoa instalou o app, o Discord manda o id do servidor,
+mas o bot não está lá: não vê membros nem configuração. Por isso `/profile` e
+`/userinfo` olham o cache do próprio bot (`CommandScope.BotGuild`), e não o
+`ctx.Guild`, antes de mostrar qualquer coisa do servidor. A lista de "Works
+anywhere" do `/help` espelha os atributos; mudou um, muda o outro.
+
+A aplicação precisa estar com **Requires OAuth2 Code Grant desligado** (Developer
+Portal > Bot). Ligado, todo jeito de adicionar o bot falha com "Integration
+requires code grant" — e o convite do site parece funcionar mas não adiciona,
+porque nada troca o código por token.
+
 ### Moderação
 `/ban` `/softban` `/kick` `/timeout` `/untimeout` `/purge` `/slowmode` `/lock`
 `/unlock`

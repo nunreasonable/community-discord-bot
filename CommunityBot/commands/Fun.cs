@@ -39,7 +39,9 @@ namespace CommunityBot.commands
             "Outlook not so good.", "Very doubtful."
         };
 
-        [SlashCommand("8ball", "Ask the magic 8-ball a question")]
+        [SlashCommand("8ball", "Ask the magic 8-ball a question",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task EightBallCommand(
             InteractionContext ctx,
@@ -55,7 +57,9 @@ namespace CommunityBot.commands
                     .WithColor(DiscordColor.Blurple)));
         }
 
-        [SlashCommand("roll", "Roll dice in NdM format")]
+        [SlashCommand("roll", "Roll dice in NdM format",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task RollCommand(
             InteractionContext ctx,
@@ -81,7 +85,9 @@ namespace CommunityBot.commands
                     .WithColor(DiscordColor.Blurple)));
         }
 
-        [SlashCommand("coinflip", "Flip a coin")]
+        [SlashCommand("coinflip", "Flip a coin",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task CoinflipCommand(InteractionContext ctx)
         {
@@ -93,7 +99,9 @@ namespace CommunityBot.commands
                     .WithColor(DiscordColor.Gold)));
         }
 
-        [SlashCommand("choose", "Pick one of the options you give")]
+        [SlashCommand("choose", "Pick one of the options you give",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task ChooseCommand(
             InteractionContext ctx,
@@ -127,7 +135,9 @@ namespace CommunityBot.commands
                     .WithColor(DiscordColor.Blurple)));
         }
 
-        [SlashCommand("avatar", "Show a user's avatar at full size")]
+        [SlashCommand("avatar", "Show a user's avatar at full size",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task AvatarCommand(
             InteractionContext ctx,
@@ -176,7 +186,9 @@ namespace CommunityBot.commands
             "You're sweet, but I'm just a bot. 💾"
         };
 
-        [SlashCommand("ship", "See how compatible two people are")]
+        [SlashCommand("ship", "See how compatible two people are",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task ShipCommand(
             InteractionContext ctx,
@@ -259,7 +271,9 @@ namespace CommunityBot.commands
             "Simply perfect. No notes. 🏆"
         };
 
-        [SlashCommand("rate", "I'll rate anything from 0 to 10")]
+        [SlashCommand("rate", "I'll rate anything from 0 to 10",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task RateCommand(
             InteractionContext ctx,
@@ -306,7 +320,9 @@ namespace CommunityBot.commands
             "posting \"first\" in the comments", "spelling it \"definately\""
         };
 
-        [SlashCommand("cancel", "Cancel someone on the internet (it's a joke)")]
+        [SlashCommand("cancel", "Cancel someone on the internet (it's a joke)",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task CancelCommand(
             InteractionContext ctx,
@@ -321,7 +337,7 @@ namespace CommunityBot.commands
                     .WithColor(DiscordColor.Orange)));
         }
 
-        [SlashCommand("say", "Make the bot say something", (long)Permissions.ManageMessages)]
+        [SlashCommand("say", "Make the bot say something", (long)Permissions.ManageMessages, allowedContexts: new[] { InteractionContextType.Guild })]
         // Exige ManageMessages: sem isso qualquer um faria o bot falar, e mensagem
         // vinda do bot tem aparencia de coisa oficial.
         [ApplicationCommandRequireUserPermissions(Permissions.ManageMessages)]

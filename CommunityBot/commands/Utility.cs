@@ -20,7 +20,9 @@ namespace CommunityBot.commands
     // sobre RequireUserPermissions ter IgnoreDms = true.
     internal class Utility : ApplicationCommandsModule
     {
-        [SlashCommand("ping", "Show the bot's latency")]
+        [SlashCommand("ping", "Show the bot's latency",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         public async Task PingCommand(InteractionContext ctx)
         {
             await ctx.CreateResponseAsync(InteractionResponseType.ChannelMessageWithSource,
@@ -30,8 +32,9 @@ namespace CommunityBot.commands
                     .WithColor(DiscordColor.Blurple)));
         }
 
-        [SlashCommand("userinfo", "Show information about a user")]
-        [ApplicationCommandRequireGuild]
+        [SlashCommand("userinfo", "Show information about a user",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         public async Task UserInfoCommand(
             InteractionContext ctx,
             [Option("user", "Whose information to show")] DiscordUser? usuario = null)
@@ -49,10 +52,16 @@ namespace CommunityBot.commands
                     $"<t:{target.CreationTimestamp.ToUnixTimeSeconds()}:D>", true))
                 .AddField(new DiscordEmbedField("Bot", target.IsBot ? "Yes" : "No", true));
 
+            // Os dados de membro (entrada, cargos, timeout) so existem num servidor
+            // em que o BOT esta. Em DM, ou como app pessoal num servidor sem o
+            // Sollarety, sai so a parte da conta.
+            var guild = CommandScope.BotGuild(ctx.Client, ctx.Guild);
+
             DiscordMember? member = null;
             try
             {
-                member = await ctx.Guild!.GetMemberAsync(target.Id);
+                if (guild is not null)
+                    member = await guild.GetMemberAsync(target.Id);
             }
             catch (NotFoundException)
             {
@@ -70,7 +79,7 @@ namespace CommunityBot.commands
 
                 // Ordem decrescente e sem o @everyone, que todo mundo tem e nao
                 // informa nada.
-                var everyoneId = ctx.Guild!.EveryoneRole?.Id ?? 0;
+                var everyoneId = guild!.EveryoneRole?.Id ?? 0;
                 var roles = member.Roles
                     .Where(r => r.Id != everyoneId)
                     .OrderByDescending(r => r.Position)
@@ -93,15 +102,19 @@ namespace CommunityBot.commands
                         $"<t:{until.ToUnixTimeSeconds()}:f>", true));
                 }
             }
-            else
+            else if (guild is not null)
             {
                 embed.WithFooter("This user is not in this server.");
+            }
+            else if (ctx.Guild is not null)
+            {
+                embed.WithFooter("Sollarety isn't in this server, so server details aren't shown.");
             }
 
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("serverinfo", "Show information about the server")]
+        [SlashCommand("serverinfo", "Show information about the server", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         public async Task ServerInfoCommand(InteractionContext ctx)
         {
@@ -146,7 +159,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("poll", "Create a yes/no poll with reactions")]
+        [SlashCommand("poll", "Create a yes/no poll with reactions", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [ApplicationCommandRequireBotPermissions(Permissions.AddReactions | Permissions.ReadMessageHistory)]
         [SlashCommandCooldown(2, 30, CooldownBucketType.User)]
@@ -183,13 +196,23 @@ namespace CommunityBot.commands
             }
         }
 
-        [SlashCommand("help", "List the available commands")]
+        [SlashCommand("help", "List the available commands",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         public async Task HelpCommand(InteractionContext ctx)
         {
             var embed = new DiscordEmbedBuilder()
                 .WithTitle("Commands")
-                .WithDescription("Moderation commands only show up for members who have the matching permission in the server.")
+                .WithDescription("The commands under **Works anywhere** also work in DMs, group chats and any server " +
+                                 "once you add Sollarety to **your apps**. Everything else needs Sollarety in the " +
+                                 "server. Moderation commands only show up for members who have the matching permission.")
                 .WithColor(DiscordColor.Blurple)
+                // A lista espelha os comandos com integrationTypes de UserInstall.
+                // Mudou la, muda aqui - senao o /help promete o que o Discord nao mostra.
+                .AddField(new DiscordEmbedField("Works anywhere",
+                    "`/8ball` `/roll` `/coinflip` `/choose` `/avatar` `/ship` `/rate` `/cancel` `/roleplay` " +
+                    "`/text` `/morse` `/rps` `/tictactoe` `/profile` `/level-dms` `/userinfo` `/unverify` " +
+                    "`/ping` `/help`", false))
                 .AddField(new DiscordEmbedField("Moderation",
                     "`/ban` `/softban` `/kick` `/timeout` `/untimeout` `/purge` `/slowmode` `/lock` `/unlock`", false))
                 .AddField(new DiscordEmbedField("Warnings",

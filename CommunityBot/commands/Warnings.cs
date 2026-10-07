@@ -23,7 +23,7 @@ namespace CommunityBot.commands
         /// <summary>Quantas advertências cabem numa página do /warnings.</summary>
         private const int PageSize = 10;
 
-        [SlashCommand("warn", "Records a warning for a user", (long)Permissions.ModerateMembers)]
+        [SlashCommand("warn", "Records a warning for a user", (long)Permissions.ModerateMembers, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         public async Task WarnCommand(
             InteractionContext ctx,
@@ -90,7 +90,7 @@ namespace CommunityBot.commands
                 $"ID `{warning.id}` — {total} in total");
         }
 
-        [SlashCommand("warnings", "Lists a user's warnings", (long)Permissions.ModerateMembers)]
+        [SlashCommand("warnings", "Lists a user's warnings", (long)Permissions.ModerateMembers, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         public async Task WarningsCommand(
             InteractionContext ctx,
@@ -129,7 +129,7 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("delwarn", "Removes a warning by its ID", (long)Permissions.ModerateMembers)]
+        [SlashCommand("delwarn", "Removes a warning by its ID", (long)Permissions.ModerateMembers, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         public async Task DelWarnCommand(
             InteractionContext ctx,

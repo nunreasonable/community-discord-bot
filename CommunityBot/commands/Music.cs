@@ -33,7 +33,7 @@ namespace CommunityBot.commands
         private const string SearchYouTube = "youtube";
         private const string SearchSoundCloud = "soundcloud";
 
-        [SlashCommand("play", "Play from YouTube, SoundCloud or Spotify — paste a link or type what to search for")]
+        [SlashCommand("play", "Play from YouTube, SoundCloud or Spotify — paste a link or type what to search for", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 15, CooldownBucketType.User)]
         public async Task PlayCommand(
@@ -135,31 +135,31 @@ namespace CommunityBot.commands
                 AddedEmbed(request, added, position, settings, member.DisplayName)));
         }
 
-        [SlashCommand("skip", "Skip the current song (or vote to skip it)")]
+        [SlashCommand("skip", "Skip the current song (or vote to skip it)", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public Task SkipCommand(InteractionContext ctx) =>
             RespondAsync(ctx, MusicActions.Skip(ctx.Member!, ctx.Guild!.Id));
 
-        [SlashCommand("stop", "Stop the music, clear the queue and leave the voice channel")]
+        [SlashCommand("stop", "Stop the music, clear the queue and leave the voice channel", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public Task StopCommand(InteractionContext ctx) =>
             RespondAsync(ctx, MusicActions.Stop(ctx.Member!, ctx.Guild!.Id));
 
-        [SlashCommand("pause", "Pause the current song")]
+        [SlashCommand("pause", "Pause the current song", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task PauseCommand(InteractionContext ctx) =>
             await RespondAsync(ctx, await MusicActions.SetPausedAsync(ctx.Member!, ctx.Guild!.Id, true));
 
-        [SlashCommand("resume", "Resume the paused song")]
+        [SlashCommand("resume", "Resume the paused song", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task ResumeCommand(InteractionContext ctx) =>
             await RespondAsync(ctx, await MusicActions.SetPausedAsync(ctx.Member!, ctx.Guild!.Id, false));
 
-        [SlashCommand("volume", "Change the music volume")]
+        [SlashCommand("volume", "Change the music volume", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public Task VolumeCommand(
@@ -167,7 +167,7 @@ namespace CommunityBot.commands
             [Option("percent", "From 1 to 150 (default 100)")][MinimumValue(1)][MaximumValue(150)] long percent) =>
             RespondAsync(ctx, MusicActions.SetVolume(ctx.Member!, ctx.Guild!.Id, (int)Math.Clamp(percent, 1, 150)));
 
-        [SlashCommand("loop", "Repeat the current song or the whole queue")]
+        [SlashCommand("loop", "Repeat the current song or the whole queue", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public Task LoopCommand(
@@ -187,13 +187,13 @@ namespace CommunityBot.commands
             return RespondAsync(ctx, MusicActions.SetLoop(ctx.Member!, ctx.Guild!.Id, mode));
         }
 
-        [SlashCommand("shuffle", "Shuffle the songs waiting in the queue")]
+        [SlashCommand("shuffle", "Shuffle the songs waiting in the queue", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public Task ShuffleCommand(InteractionContext ctx) =>
             RespondAsync(ctx, MusicActions.Shuffle(ctx.Member!, ctx.Guild!.Id));
 
-        [SlashCommand("remove", "Remove a song from the queue")]
+        [SlashCommand("remove", "Remove a song from the queue", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public Task RemoveCommand(
@@ -201,7 +201,7 @@ namespace CommunityBot.commands
             [Option("position", "Its number in /queue")][MinimumValue(1)] long posicao) =>
             RespondAsync(ctx, MusicActions.Remove(ctx.Member!, ctx.Guild!.Id, (int)Math.Clamp(posicao, 1, int.MaxValue)));
 
-        [SlashCommand("queue", "Show the songs waiting to play")]
+        [SlashCommand("queue", "Show the songs waiting to play", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public Task QueueCommand(
@@ -209,7 +209,7 @@ namespace CommunityBot.commands
             [Option("page", "Which page of the queue")][MinimumValue(1)] long pagina = 1) =>
             RespondAsync(ctx, MusicActions.Queue(ctx.Guild!.Id, (int)Math.Clamp(pagina, 1, 1000)));
 
-        [SlashCommand("nowplaying", "Show the song that's playing and how far along it is")]
+        [SlashCommand("nowplaying", "Show the song that's playing and how far along it is", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public Task NowPlayingCommand(InteractionContext ctx) =>

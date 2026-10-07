@@ -24,7 +24,7 @@ namespace CommunityBot.commands
     [ApplicationCommandRequireGuild]
     internal class Tickets : ApplicationCommandsModule
     {
-        [SlashCommand("ticket", "Open a ticket with the staff")]
+        [SlashCommand("ticket", "Open a ticket with the staff", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageChannels | Permissions.ManageRoles)]
         [SlashCommandCooldown(2, 60, CooldownBucketType.User)]
         public async Task TicketCommand(
@@ -54,7 +54,7 @@ namespace CommunityBot.commands
         }
 
         [SlashCommand("ticket-panel", "Post the ticket panel in this channel",
-            (long)Permissions.ManageGuild)]
+            (long)Permissions.ManageGuild, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageGuild)]
         [ApplicationCommandRequireBotPermissions(Permissions.SendMessages)]
         public async Task PanelCommand(
@@ -113,7 +113,7 @@ namespace CommunityBot.commands
                 Embeds.Ok("Panel posted", $"The panel is live in {ctx.Channel.Mention}.")));
         }
 
-        [SlashCommand("ticket-close", "Close the ticket in this channel")]
+        [SlashCommand("ticket-close", "Close the ticket in this channel", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageChannels)]
         public async Task CloseCommand(
             InteractionContext ctx,
@@ -159,14 +159,14 @@ namespace CommunityBot.commands
             }
         }
 
-        [SlashCommand("ticket-add", "Add someone to the ticket in this channel")]
+        [SlashCommand("ticket-add", "Add someone to the ticket in this channel", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageRoles)]
         public Task AddCommand(
             InteractionContext ctx,
             [Option("user", "Who to add to the ticket")] DiscordUser user) =>
             SetParticipantAsync(ctx, user, add: true);
 
-        [SlashCommand("ticket-remove", "Remove someone from the ticket in this channel")]
+        [SlashCommand("ticket-remove", "Remove someone from the ticket in this channel", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageRoles)]
         public Task RemoveCommand(
             InteractionContext ctx,

@@ -26,7 +26,7 @@ namespace CommunityBot.commands
     [ApplicationCommandRequireGuild]
     internal class Moderation : ApplicationCommandsModule
     {
-        [SlashCommand("ban", "Bans a user from the server", (long)Permissions.BanMembers)]
+        [SlashCommand("ban", "Bans a user from the server", (long)Permissions.BanMembers, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.BanMembers)]
         [ApplicationCommandRequireBotPermissions(Permissions.BanMembers)]
         public async Task BanCommand(
@@ -83,7 +83,7 @@ namespace CommunityBot.commands
                 deleteDays > 0 ? $"Deleted messages from the last {deleteDays} day(s)." : null);
         }
 
-        [SlashCommand("kick", "Kicks a user from the server", (long)Permissions.KickMembers)]
+        [SlashCommand("kick", "Kicks a user from the server", (long)Permissions.KickMembers, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.KickMembers)]
         [ApplicationCommandRequireBotPermissions(Permissions.KickMembers)]
         public async Task KickCommand(
@@ -129,7 +129,7 @@ namespace CommunityBot.commands
         // Cooldown de 3 segundos por usuário — é o número da documentação que
         // este comando segue. É o único comando de moderação com cooldown aqui:
         // os vizinhos não têm, e sem esta nota o (1, 3) pareceria arbitrário.
-        [SlashCommand("softban", "Bans and immediately unbans a user, deleting their messages", (long)Permissions.BanMembers)]
+        [SlashCommand("softban", "Bans and immediately unbans a user, deleting their messages", (long)Permissions.BanMembers, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.BanMembers)]
         [ApplicationCommandRequireBotPermissions(Permissions.BanMembers)]
         [SlashCommandCooldown(1, 3, CooldownBucketType.User)]
@@ -200,7 +200,7 @@ namespace CommunityBot.commands
                 "Deleted messages from the last 7 days. The user can rejoin with an invite.");
         }
 
-        [SlashCommand("timeout", "Times out a user for a while", (long)Permissions.ModerateMembers)]
+        [SlashCommand("timeout", "Times out a user for a while", (long)Permissions.ModerateMembers, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         [ApplicationCommandRequireBotPermissions(Permissions.ModerateMembers)]
         public async Task TimeoutCommand(
@@ -253,7 +253,7 @@ namespace CommunityBot.commands
                 $"Duration: {describe}");
         }
 
-        [SlashCommand("untimeout", "Removes a user's timeout", (long)Permissions.ModerateMembers)]
+        [SlashCommand("untimeout", "Removes a user's timeout", (long)Permissions.ModerateMembers, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.ModerateMembers)]
         [ApplicationCommandRequireBotPermissions(Permissions.ModerateMembers)]
         public async Task UntimeoutCommand(
@@ -305,7 +305,7 @@ namespace CommunityBot.commands
         // precisa dela, e sem declara-la aqui a falta de permissao virava excecao
         // crua da API no meio da execucao - exatamente o que o RequireBotPermissions
         // existe para evitar.
-        [SlashCommand("purge", "Deletes recent messages in the channel", (long)Permissions.ManageMessages)]
+        [SlashCommand("purge", "Deletes recent messages in the channel", (long)Permissions.ManageMessages, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageMessages)]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageMessages | Permissions.ReadMessageHistory)]
         public async Task PurgeCommand(
@@ -388,7 +388,7 @@ namespace CommunityBot.commands
             }
         }
 
-        [SlashCommand("slowmode", "Sets the channel's slowmode", (long)Permissions.ManageChannels)]
+        [SlashCommand("slowmode", "Sets the channel's slowmode", (long)Permissions.ManageChannels, allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageChannels)]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageChannels)]
         public async Task SlowmodeCommand(
@@ -428,7 +428,7 @@ namespace CommunityBot.commands
         // que aquela pessoa nao pode fazer a mao - e o defaultMemberPermissions
         // ainda anunciava a permissao errada a quem configura a integracao.
         [SlashCommand("lock", "Stops @everyone from sending messages in the channel",
-            (long)(Permissions.ManageChannels | Permissions.ManageRoles))]
+            (long)(Permissions.ManageChannels | Permissions.ManageRoles), allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageChannels | Permissions.ManageRoles)]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageRoles)]
         public Task LockCommand(InteractionContext ctx,
@@ -436,7 +436,7 @@ namespace CommunityBot.commands
             SetLockAsync(ctx, locked: true, reason);
 
         [SlashCommand("unlock", "Lets @everyone send messages in the channel again",
-            (long)(Permissions.ManageChannels | Permissions.ManageRoles))]
+            (long)(Permissions.ManageChannels | Permissions.ManageRoles), allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageChannels | Permissions.ManageRoles)]
         [ApplicationCommandRequireBotPermissions(Permissions.ManageRoles)]
         public Task UnlockCommand(InteractionContext ctx,

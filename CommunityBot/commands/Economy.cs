@@ -33,7 +33,7 @@ namespace CommunityBot.commands
 
         private static string When(DateTimeOffset at) => $"<t:{at.ToUnixTimeSeconds()}:R>";
 
-        [SlashCommand("daily", "Claim your daily SOL$ — come back every day to build a streak")]
+        [SlashCommand("daily", "Claim your daily SOL$ — come back every day to build a streak", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task DailyCommand(InteractionContext ctx)
@@ -66,7 +66,7 @@ namespace CommunityBot.commands
                     .WithAllowedMentions(Array.Empty<IMention>()));
         }
 
-        [SlashCommand("work", "Work a shift for some SOL$ (once an hour)")]
+        [SlashCommand("work", "Work a shift for some SOL$ (once an hour)", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task WorkCommand(InteractionContext ctx)
@@ -94,7 +94,7 @@ namespace CommunityBot.commands
                     .WithColor(Color)));
         }
 
-        [SlashCommand("pay", "Send some of your SOL$ to someone")]
+        [SlashCommand("pay", "Send some of your SOL$ to someone", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 15, CooldownBucketType.User)]
         public async Task PayCommand(
@@ -146,7 +146,7 @@ namespace CommunityBot.commands
                     .WithAllowedMentions(Array.Empty<IMention>()));
         }
 
-        [SlashCommand("balance", "See how many SOL$ someone has")]
+        [SlashCommand("balance", "See how many SOL$ someone has", allowedContexts: new[] { InteractionContextType.Guild })]
         [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 10, CooldownBucketType.User)]
         public async Task BalanceCommand(

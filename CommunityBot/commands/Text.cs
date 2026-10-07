@@ -34,7 +34,9 @@ namespace CommunityBot.commands
         }
     }
 
-    [SlashCommandGroup("text", "Transform some text")]
+    [SlashCommandGroup("text", "Transform some text",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
     internal class TextCommands : ApplicationCommandsModule
     {
         [SlashCommand("vaporwave", "Ｍａｋｅ ｉｔ ａｅｓｔｈｅｔｉｃ")]
@@ -75,7 +77,9 @@ namespace CommunityBot.commands
             TextReply.ReplyAsync(ctx, TextTransforms.Reverse(texto));
     }
 
-    [SlashCommandGroup("morse", "Morse code translator")]
+    [SlashCommandGroup("morse", "Morse code translator",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
     internal class MorseCommands : ApplicationCommandsModule
     {
         [SlashCommand("encode", "Turn text into Morse code")]

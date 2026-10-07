@@ -20,15 +20,21 @@ namespace CommunityBot.commands
     /// A logica mora em Services/Roblox. Aqui fica so a porta de entrada, porque
     /// o botao do painel precisa fazer exatamente o mesmo que o /verify.
     /// </summary>
-    [ApplicationCommandRequireGuild]
+    //
+    // RequireGuild por comando, e nao na classe: o /unverify desfaz um vinculo
+    // GLOBAL e funciona em qualquer lugar - inclusive como app pessoal. Os outros
+    // quatro mexem em cargo e apelido do servidor e continuam exigindo um.
     internal class Verification : ApplicationCommandsModule
     {
-        [SlashCommand("verify", "Links your Roblox account through the official Roblox login")]
+        [SlashCommand("verify", "Links your Roblox account through the official Roblox login", allowedContexts: new[] { InteractionContextType.Guild })]
+        [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(3, 60, CooldownBucketType.User)]
         public Task VerifyCommand(InteractionContext ctx) =>
             VerificationFlow.BeginAsync(ctx.Client, ctx.Interaction, ctx.Guild!, ctx.Member!);
 
-        [SlashCommand("unverify", "Unlinks your Roblox account, across all servers")]
+        [SlashCommand("unverify", "Unlinks your Roblox account, across all servers",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
         public async Task UnverifyCommand(InteractionContext ctx)
         {
             if (RobloxLinkStore.For(ctx.User.Id) is not { } link)
@@ -49,13 +55,17 @@ namespace CommunityBot.commands
                         .WithColor(DiscordColor.Blurple)
                         .WithDescription(
                             $"You're currently linked to {VerificationFlow.Describe(link)}.\n\n" +
-                            "Unlinking applies to **every server** that uses Sollarety. Here, verification roles are " +
-                            "removed right away; in other servers, on the next `/update`. To link again, just run `/verify`.")
+                            "Unlinking applies to **every server** that uses Sollarety. " +
+                            (CommandScope.BotGuild(ctx.Client, ctx.Guild) is not null
+                                ? "Here, verification roles are removed right away; in other servers, on the next `/update`. "
+                                : "Verification roles are removed in each server on the next `/update`. ") +
+                            "To link again, run `/verify` in a server.")
                         .Build())
                     .AddComponents(new DiscordButtonComponent(ButtonStyle.Danger, VerificationFlow.UnlinkId, "Unlink")));
         }
 
-        [SlashCommand("update", "Re-reads the Roblox account and reapplies roles and nickname")]
+        [SlashCommand("update", "Re-reads the Roblox account and reapplies roles and nickname", allowedContexts: new[] { InteractionContextType.Guild })]
+        [ApplicationCommandRequireGuild]
         [SlashCommandCooldown(5, 60, CooldownBucketType.User)]
         public async Task UpdateCommand(
             InteractionContext ctx,
@@ -130,7 +140,8 @@ namespace CommunityBot.commands
             await ctx.EditResponseAsync(new DiscordWebhookBuilder().AddEmbed(embed));
         }
 
-        [SlashCommand("whois", "Shows the Roblox account linked to someone")]
+        [SlashCommand("whois", "Shows the Roblox account linked to someone", allowedContexts: new[] { InteractionContextType.Guild })]
+        [ApplicationCommandRequireGuild]
         public async Task WhoisCommand(
             InteractionContext ctx,
             [Option("user", "Who to look up")] DiscordUser usuario)
@@ -174,7 +185,8 @@ namespace CommunityBot.commands
         }
 
         [SlashCommand("verify-panel", "Posts the panel with the verification button in this channel",
-            (long)Permissions.ManageGuild)]
+            (long)Permissions.ManageGuild, allowedContexts: new[] { InteractionContextType.Guild })]
+        [ApplicationCommandRequireGuild]
         [ApplicationCommandRequireUserPermissions(Permissions.ManageGuild)]
         [ApplicationCommandRequireBotPermissions(Permissions.SendMessages)]
         public async Task PanelCommand(

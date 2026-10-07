@@ -16,7 +16,9 @@ namespace CommunityBot.commands
     /// Sem RequireGuild: funciona em DM tambem - la o "user" so enxerga quem
     /// esta na conversa, e o botao nao depende de servidor nenhum.
     /// </summary>
-    [SlashCommandGroup("roleplay", "Hug, pat, slap and more — with an anime GIF")]
+    [SlashCommandGroup("roleplay", "Hug, pat, slap and more — with an anime GIF",
+            allowedContexts: new[] { InteractionContextType.Guild, InteractionContextType.BotDm, InteractionContextType.PrivateChannel },
+            integrationTypes: new[] { ApplicationCommandIntegrationTypes.GuildInstall, ApplicationCommandIntegrationTypes.UserInstall })]
     internal class Roleplay : ApplicationCommandsModule
     {
         [SlashCommand("hug", "Give someone a hug")]
