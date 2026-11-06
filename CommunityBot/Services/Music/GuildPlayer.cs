@@ -212,7 +212,7 @@ namespace CommunityBot.Services.Music
         /// </summary>
         public (bool Skipped, int Votes, int Needed, bool Duplicate) VoteSkip(ulong userId, IReadOnlyCollection<ulong> listeners)
         {
-            var needed = Math.Max(1, (int)Math.Ceiling(listeners.Count / 2.0));
+            var needed = Math.Max(1, listeners.Count / 2 + 1);
             int votes;
             bool duplicate;
 
