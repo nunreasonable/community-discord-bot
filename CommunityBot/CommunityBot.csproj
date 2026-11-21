@@ -37,6 +37,7 @@
   <ItemGroup>
     <None Include="config\config.example.jsonc" CopyToOutputDirectory="PreserveNewest" Link="config\config.example.jsonc" />
     <None Include="config\config.jsonc" CopyToOutputDirectory="PreserveNewest" Link="config\config.jsonc" Condition="Exists('config\config.jsonc')" />
+    <None Include="config\lore.md" CopyToOutputDirectory="PreserveNewest" Link="config\lore.md" Condition="Exists('config\lore.md')" />
   </ItemGroup>
 
   <ItemGroup>

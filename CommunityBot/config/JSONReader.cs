@@ -24,6 +24,9 @@ namespace CommunityBot.config
         /// <summary>Nunca nulo: sem a secao, o feed de commits fica desligado.</summary>
         public GitFeedSettings gitFeed { get; private set; } = new();
 
+        /// <summary>Nunca nulo: sem a secao, a lista de servidores fica vazia e a IA nao responde em lugar nenhum.</summary>
+        public LocalAiSettings localAi { get; private set; } = new();
+
         // LEGADO. Estas seis chaves saíram do arquivo e viraram configuracao por
         // servidor, escrita pelo /config. Continuam sendo lidas para a migracao
         // unica do LegacyConfigMigration, e nada mais as consulta.
@@ -66,6 +69,7 @@ namespace CommunityBot.config
             robloxVerify = data?.robloxVerify ?? new RobloxVerifySettings();
             music = data?.music ?? new MusicSettings();
             gitFeed = data?.gitFeed ?? new GitFeedSettings();
+            localAi = data?.localAi ?? new LocalAiSettings();
             moderationLogChannelId = data?.moderationLogChannelId;
             autoSoftbanGuildId = data?.autoSoftbanGuildId;
             autoSoftbanChannelId = data?.autoSoftbanChannelId;
@@ -143,6 +147,9 @@ namespace CommunityBot.config
 
         /// <summary>Repositorio git local cujos commits vao para um canal. Ver GitFeedSettings.</summary>
         public GitFeedSettings? gitFeed { get; set; }
+
+        /// <summary>IA local dividida com o ccore. Ver LocalAiSettings.</summary>
+        public LocalAiSettings? localAi { get; set; }
 
         /// <summary>
         /// LEGADO, so para a migracao. Ver LegacyConfigMigration: estas seis
@@ -296,5 +303,25 @@ namespace CommunityBot.config
         // Piso de 10s: cada volta roda um git, e menos que isso nao muda nada
         // para quem le o canal.
         public TimeSpan PollInterval => TimeSpan.FromSeconds(Math.Clamp(pollSeconds, 10, 3600));
+    }
+
+    internal sealed class LocalAiSettings
+    {
+        /// <summary>Servidor do llama.cpp que o ccore liga e desliga.</summary>
+        public string baseUrl { get; set; } = "http://127.0.0.1:9931";
+
+        /// <summary>Unicos servidores onde a IA responde.</summary>
+        public ulong[] guildIds { get; set; } = Array.Empty<ulong>();
+
+        /// <summary>Quem escapa da trava de spam e ordens (AiGuard) e do intervalo entre perguntas.</summary>
+        public ulong[] operatorUserIds { get; set; } = Array.Empty<ulong>();
+
+        /// <summary>Vazio usa a persona padrao do LocalAi.</summary>
+        public string? systemPrompt { get; set; }
+
+        public int cooldownSeconds { get; set; } = 20;
+        public int maxTokens { get; set; } = 400;
+
+        public string BaseUrl => baseUrl.TrimEnd('/');
     }
 }

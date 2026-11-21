@@ -1,6 +1,9 @@
 # O config real carrega o token do bot. So o exemplo e versionado.
 CommunityBot/config/config.jsonc
 
+# Lore da persona da IA local: so nesta maquina.
+CommunityBot/config/lore.md
+
 # Dados gravados em execucao.
 # *.json* e nao *.json: o WarningStore grava warnings.json.tmp e so depois
 # renomeia. Se o processo morrer no meio, esse .tmp fica no disco com o

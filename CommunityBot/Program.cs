@@ -111,6 +111,10 @@ namespace CommunityBot
             // intent de Message Content. Inerte onde o nivel esta desligado.
             Client.MessageCreated += LevelService.OnMessageCreated;
 
+            // Resposta por IA local quando mencionado, so nos servidores de
+            // localAi.guildIds e so enquanto o modelo do ccore estiver ligado.
+            Client.MessageCreated += LocalAi.OnMessageCreated;
+
             // Diz na subida se o vigia esta ligado e, se nao estiver funcionando,
             // por que. Sem isto, canal errado, canal invisivel e canal de forum
             // produzem o mesmo silencio que "ninguem escreveu la".

@@ -73,6 +73,18 @@
         "channelId": null,
         "title": "Commits",
         "pollSeconds": 30
+    },
+
+    // IA local: o mesmo modelo do ccore (llama.cpp). O ccore liga e desliga;
+    // aqui o bot so responde a mencao enquanto o servidor estiver de pe, e so
+    // nos servidores listados. systemPrompt vazio usa a persona padrao.
+    "localAi": {
+        "baseUrl": "http://127.0.0.1:9931",
+        "guildIds": [],
+        "operatorUserIds": [],
+        "systemPrompt": "",
+        "cooldownSeconds": 20,
+        "maxTokens": 400
     }
 
     // O RESTO DA CONFIGURACAO NAO MORA MAIS AQUI.
