@@ -131,6 +131,38 @@ namespace CommunityBot.Services
             return string.Join(' ', plain.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         }
 
+        /// <summary>
+        /// Corta o loop do proprio modelo: letra igual em fila fica em 6
+        /// (KKKKKK) e palavra igual em fila fica em 3. Mesma regra do ccore.
+        /// </summary>
+        internal static string Tidy(string text)
+        {
+            var chars = new StringBuilder(text.Length);
+            char? prev = null;
+            var run = 0;
+            foreach (var c in text)
+            {
+                var low = char.ToLowerInvariant(c);
+                run = prev == low ? run + 1 : 1;
+                prev = low;
+                if (run <= 6)
+                    chars.Append(c);
+            }
+
+            var outWords = new System.Collections.Generic.List<string>();
+            run = 0;
+            foreach (var word in chars.ToString().Split(' '))
+            {
+                var same = outWords.Count > 0 && word.Length > 0 &&
+                           string.Equals(outWords[^1], word, StringComparison.OrdinalIgnoreCase);
+                run = same ? run + 1 : 1;
+                if (run <= 3)
+                    outWords.Add(word);
+            }
+
+            return string.Join(' ', outWords).Trim();
+        }
+
         /// <summary>KKKKKKKKKKKKKKKKKKKKK, "aaaaaaaa" sem fim ou a mesma palavra em fila.</summary>
         internal static bool LooksSpammy(string text)
         {

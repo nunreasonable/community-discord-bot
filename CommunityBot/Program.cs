@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CommunityBot.commands;
 using CommunityBot.config;
 using CommunityBot.Services;
+using CommunityBot.Services.Ai;
 using CommunityBot.Services.Economy;
 using CommunityBot.Services.Fun;
 using CommunityBot.Services.Levels;
@@ -143,6 +144,9 @@ namespace CommunityBot
             // Yes/No da DM de level up ("lvl:") e confirmacao do /pay ("eco:").
             Client.ComponentInteractionCreated += LevelService.OnComponent;
             Client.ComponentInteractionCreated += EconomyComponents.OnComponent;
+
+            // Botoes do /quiz ("quiz:"). Mesmo esquema: Handled so para esse prefixo.
+            Client.ComponentInteractionCreated += AiQuizComponents.OnComponent;
 
             // Bot expulso do canal de voz e canal que esvazia. Nao ha evento de
             // desconexao publico na biblioteca de voz; e por aqui que se sabe.
@@ -524,6 +528,7 @@ namespace CommunityBot
                 slash.RegisterGlobalCommands<XpCommands>();
                 slash.RegisterGlobalCommands<Economy>();
                 slash.RegisterGlobalCommands<Profile>();
+                slash.RegisterGlobalCommands<commands.Ai>();
                 return;
             }
 
@@ -545,6 +550,7 @@ namespace CommunityBot
             slash.RegisterGuildCommands<XpCommands>(guildId.Value);
             slash.RegisterGuildCommands<Economy>(guildId.Value);
             slash.RegisterGuildCommands<Profile>(guildId.Value);
+            slash.RegisterGuildCommands<commands.Ai>(guildId.Value);
         }
 
         /// <summary>

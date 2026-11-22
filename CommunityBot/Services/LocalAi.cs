@@ -131,7 +131,8 @@ namespace CommunityBot.Services
                 .WithReply(msg.Id, mention: true)
                 .WithAllowedMentions(new IMention[] { new RepliedUserMention() }));
 
-        private static async Task<bool> IsUpAsync(LocalAiSettings settings)
+        /// <summary>Internal: outros recursos (traducao, quiz) tambem precisam saber se o modelo esta de pe.</summary>
+        internal static async Task<bool> IsUpAsync(LocalAiSettings settings)
         {
             try
             {
@@ -145,6 +146,10 @@ namespace CommunityBot.Services
             }
         }
 
+        /// <summary>O servidor esta na lista de servidores onde a IA local vale. Null (DM, app pessoal sem servidor) nunca esta.</summary>
+        internal static bool IsAllowedGuild(LocalAiSettings settings, ulong? guildId) =>
+            guildId is { } id && settings.guildIds.Contains(id);
+
         private static async Task<string> CompleteAsync(LocalAiSettings settings, DiscordUser author, DiscordMessage msg, string text, ulong me)
         {
             // O idioma e decidido aqui, nao pelo modelo: com o prompt em
@@ -157,29 +162,104 @@ namespace CommunityBot.Services
                          "\n\n" + LoreSection() + "\n\n" + language;
 
             var messages = new JArray { new JObject { ["role"] = "system", ["content"] = system } };
-            if (msg.ReferencedMessage is { } earlier && earlier.Author?.Id == me && earlier.Content.Length > 0)
-                messages.Add(new JObject { ["role"] = "assistant", ["content"] = earlier.Content });
+            // Resposta anterior que saiu em loop fica de fora: no contexto ela
+            // puxa o modelo para o mesmo loop.
+            if (msg.ReferencedMessage is { } earlier && earlier.Author?.Id == me && earlier.Content.Length > 0 &&
+                !AiGuard.LooksSpammy(earlier.Content))
+                messages.Add(new JObject { ["role"] = "assistant", ["content"] = AiGuard.Tidy(earlier.Content) });
             var name = author.GlobalName ?? author.Username;
             messages.Add(new JObject { ["role"] = "user", ["content"] = $"{name}: {text}" });
 
+            var raw = await SendChatAsync(settings, messages, settings.maxTokens, null).ConfigureAwait(false);
+            if (raw is null)
+                return "Tô sem cabeça agora, tenta daqui a pouco.";
+
+            var reply = AiGuard.Tidy(StripThinking(raw));
+            if (reply.Length == 0)
+                return "Deu branco aqui, tenta de novo.";
+            return reply.Length > MaxReply ? reply[..MaxReply] + "…" : reply;
+        }
+
+        /// <summary>
+        /// Pergunta generica ao modelo, fora do fluxo de mencao: um system e um
+        /// user prompt, sem historico. Usado pela traducao e pelo quiz, que nao
+        /// tem a ver com o personagem Sollarety.
+        ///
+        /// Espera o mesmo slot do chat (s_busy) com um prazo - se o chat estiver
+        /// ocupado por tempo demais, desiste e devolve null em vez de empilhar
+        /// pedidos. jsonSchema, quando dado, forca a saida em JSON e PULA o Tidy
+        /// (ele mexe em letra e palavra repetida, o que destruiria um JSON
+        /// valido); sem schema o Tidy roda igual ao chat normal.
+        /// </summary>
+        internal static async Task<string?> AskAsync(LocalAiSettings settings, string system, string user, int maxTokens, JObject? jsonSchema = null)
+        {
+            if (!await s_busy.WaitAsync(TimeSpan.FromSeconds(60)).ConfigureAwait(false))
+                return null;
+
+            try
+            {
+                var messages = new JArray
+                {
+                    new JObject { ["role"] = "system", ["content"] = system },
+                    new JObject { ["role"] = "user", ["content"] = user }
+                };
+
+                var raw = await SendChatAsync(settings, messages, maxTokens, jsonSchema).ConfigureAwait(false);
+                if (raw is null)
+                    return null;
+
+                var text = StripThinking(raw);
+                if (jsonSchema is null)
+                    text = AiGuard.Tidy(text);
+
+                return text.Length == 0 ? null : text;
+            }
+            finally
+            {
+                s_busy.Release();
+            }
+        }
+
+        /// <summary>
+        /// A parte HTTP, compartilhada pelo chat por mencao e pelo AskAsync.
+        /// Devolve null (nunca lanca) quando o servidor respondeu erro, caiu no
+        /// meio ou devolveu algo que nao e o JSON esperado - quem chama decide a
+        /// mensagem de "desculpa" certa para o caso.
+        /// </summary>
+        private static async Task<string?> SendChatAsync(LocalAiSettings settings, JArray messages, int maxTokens, JObject? jsonSchema)
+        {
             var body = new JObject
             {
                 ["model"] = "ccore",
                 ["messages"] = messages,
-                ["max_tokens"] = settings.maxTokens,
+                ["max_tokens"] = maxTokens,
                 ["temperature"] = 0.7,
+                // Contra loop (KKKK sem fim): o Qwen recomenda presence_penalty
+                // nas versoes quantizadas, e o DRY pune trecho repetido.
+                ["presence_penalty"] = 1.0,
+                ["repeat_penalty"] = 1.1,
+                ["dry_multiplier"] = 0.8,
                 ["stream"] = false
             };
-            using var content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json");
-            using var res = await s_http.PostAsync(settings.BaseUrl + "/v1/chat/completions", content).ConfigureAwait(false);
-            if (!res.IsSuccessStatusCode)
-                return "Tô sem cabeça agora, tenta daqui a pouco.";
+            // Campo de topo, nao dentro de response_format: e assim que o
+            // llama.cpp aceita o schema.
+            if (jsonSchema is not null)
+                body["json_schema"] = jsonSchema;
 
-            var json = JObject.Parse(await res.Content.ReadAsStringAsync().ConfigureAwait(false));
-            var reply = StripThinking(json["choices"]?[0]?["message"]?["content"]?.ToString() ?? "");
-            if (reply.Length == 0)
-                return "Deu branco aqui, tenta de novo.";
-            return reply.Length > MaxReply ? reply[..MaxReply] + "…" : reply;
+            try
+            {
+                using var content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json");
+                using var res = await s_http.PostAsync(settings.BaseUrl + "/v1/chat/completions", content).ConfigureAwait(false);
+                if (!res.IsSuccessStatusCode)
+                    return null;
+
+                var json = JObject.Parse(await res.Content.ReadAsStringAsync().ConfigureAwait(false));
+                return json["choices"]?[0]?["message"]?["content"]?.ToString();
+            }
+            catch (Exception ex) when (ex is HttpRequestException or JsonException or OperationCanceledException)
+            {
+                return null;
+            }
         }
 
         /// <summary>

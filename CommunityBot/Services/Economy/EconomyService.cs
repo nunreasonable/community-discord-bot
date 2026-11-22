@@ -124,6 +124,23 @@ namespace CommunityBot.Services.Economy
             });
 
         // ------------------------------------------------------------------
+        // Premio de fora (quiz, etc)
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Credita um premio fixo, sem regra de cooldown nem streak - quem chama
+        /// (o /quiz, por exemplo) ja decidiu que a pessoa ganhou.
+        /// </summary>
+        public static Task<long> AwardAsync(ulong userId, long amount) =>
+            EconomyStore.Instance.UpdateAsync(edit =>
+            {
+                var wallet = edit.Get(userId);
+                wallet.balance = checked(wallet.balance + amount);
+                edit.MarkChanged();
+                return wallet.balance;
+            });
+
+        // ------------------------------------------------------------------
         // Pay
         // ------------------------------------------------------------------
 
