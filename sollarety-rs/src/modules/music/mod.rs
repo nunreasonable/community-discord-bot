@@ -1,47 +1,90 @@
 //! Musica: /play, /skip, /stop, /pause, /resume, /volume, /loop, /shuffle,
 //! /remove, /queue, /nowplaying, os botoes "music:" e o VoiceStateUpdate
 //! (bot expulso, canal vazio). A voz e o songbird que o main ja registrou no
-//! client: `data.songbird` ou `songbird::get(ctx)`.
+//! client (`data.songbird`); o audio e so de SAIDA - o songbird esta sem o
+//! feature "receive", entao nada que os outros falam e decodificado.
 //!
-//! A portar do C# (CommunityBot/):
-//! - commands/Music.cs
-//! - Services/Music/GuildPlayer.cs
-//! - Services/Music/MusicActions.cs
-//! - Services/Music/MusicComponents.cs
-//! - Services/Music/MusicFormat.cs
-//! - Services/Music/MusicService.cs
-//! - Services/Music/MusicSources.cs
-//! - Services/Music/Spotify.cs
-//! - Services/Music/TrackInfo.cs
-//! - Services/Music/YtDlp.cs
-//!
-//! Tudo deste modulo fica DENTRO deste diretorio. Estado proprio vai num
-//! `static` (LazyLock/OnceLock) daqui, e nao em campo novo no `Data`.
+//! Mapa (do C#, CommunityBot/):
+//! - commands.rs   commands/Music.cs
+//! - actions.rs    Services/Music/MusicActions.cs
+//! - components.rs Services/Music/MusicComponents.cs
+//! - format.rs     Services/Music/MusicFormat.cs
+//! - player.rs     Services/Music/GuildPlayer.cs
+//! - service.rs    Services/Music/MusicService.cs
+//! - sources.rs    Services/Music/MusicSources.cs
+//! - spotify.rs    Services/Music/Spotify.cs
+//! - track.rs      Services/Music/TrackInfo.cs (+ MusicException)
+//! - ytdlp.rs      Services/Music/YtDlp.cs
+//! - voice.rs      ffmpeg -> songbird (no C#, o VoiceTransmitSink)
+//! - cancel.rs     o CancellationToken que o tokio puro nao tem
+
+mod actions;
+mod cancel;
+mod commands;
+mod components;
+mod format;
+mod player;
+mod service;
+mod sources;
+mod spotify;
+mod track;
+mod voice;
+mod ytdlp;
+
+use std::{sync::Once, time::Duration};
 
 use poise::serenity_prelude as serenity;
 
-use crate::{Data, Error};
+use crate::{Data, Error, scope};
 
-/// Os comandos do modulo. O main junta todos e registra.
+/// Os comandos do modulo, na ordem do C#. Todos so em servidor.
 pub fn commands() -> Vec<poise::Command<Data, Error>> {
-    vec![]
+    vec![
+        commands::play(),
+        commands::skip(),
+        commands::stop(),
+        commands::pause(),
+        commands::resume(),
+        commands::volume(),
+        commands::loop_(),
+        commands::shuffle(),
+        commands::remove(),
+        commands::queue(),
+        commands::nowplaying(),
+    ]
+    .into_iter()
+    .map(scope::guild_only)
+    .collect()
 }
 
-/// Recebe TODO evento do gateway. Interacao de componente que nao comeca com
-/// o prefixo deste modulo nao e daqui: ignore e devolva Ok. Trabalho longo
-/// vai num `tokio::spawn`, para nao segurar os outros modulos.
 pub async fn on_event(
-    _ctx: &serenity::Context,
-    _event: &serenity::FullEvent,
+    ctx: &serenity::Context,
+    event: &serenity::FullEvent,
     _data: &Data,
 ) -> Result<(), Error> {
+    // O CleanTempRoot do C# rodava antes de conectar. O primeiro evento do
+    // gateway vem antes de qualquer /play, e o Once segura quem chegar junto.
+    static CLEAN: Once = Once::new();
+    CLEAN.call_once(service::clean_temp_root);
+
+    match event {
+        serenity::FullEvent::CacheReady { .. } => {
+            tokio::spawn(service::report_status());
+        }
+        serenity::FullEvent::VoiceStateUpdate { new, .. } => {
+            service::on_voice_state_update(ctx, new);
+        }
+        serenity::FullEvent::InteractionCreate {
+            interaction: serenity::Interaction::Component(component),
+        } if component.data.custom_id.starts_with(format::PREFIX) => {
+            tokio::spawn(components::handle(ctx.clone(), component.clone()));
+        }
+        _ => {}
+    }
     Ok(())
 }
 
-/// Chamado uma vez no desligamento, antes de largar o gateway.
+/// Desligamento: sai dos canais de voz e apaga o audio baixado (ate 8 s).
 pub async fn shutdown(_data: &Data) {
-    // Desligamento: sair dos canais de voz e apagar o audio baixado
-    // (MusicService.DrainAsync, ate 8 s). Na subida o C# chamava
-    // MusicService.CleanTempRoot() antes de conectar: faca isso no primeiro
-    // evento ou num LazyLock do modulo.
+    service::drain(Duration::from_secs(8)).await;
 }
