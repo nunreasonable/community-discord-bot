@@ -1,0 +1,100 @@
+{
+    // Token da aplicacao do bot. Copie este arquivo para config.jsonc e cole o
+    // token la - config.jsonc esta no .gitignore justamente por causa disto.
+    "token": "",
+
+    // ATALHO DE DESENVOLVIMENTO. Vazio - o normal - registra os comandos
+    // GLOBALMENTE, e o Discord os anexa a todo servidor onde o bot for
+    // instalado com o escopo applications.commands, inclusive os que ele entrar
+    // depois. Nao ha nada a fazer por servidor.
+    //
+    // Preencher inverte isso: os comandos passam a existir SO nesses servidores
+    // (aparecem na hora, o que ajuda a iterar) e o bot fica sem comando em todo
+    // o resto - servidor novo inclusive. Voltar para global exige uma subida com
+    // a lista vazia, que e quando o bot recolhe as copias por servidor; sem isso
+    // elas se somam as globais e cada comando aparece duas vezes.
+    "guildIds": [],
+
+    // VERIFICACAO ROBLOX. Sem o apiSecret o /verify responde que a verificacao
+    // esta indisponivel e nada mais muda - o resto do bot funciona igual.
+    //
+    // O apiSecret e o MESMO valor do secret BOT_API_SECRET do Worker
+    // (cloudflare/roblox-verify-worker no repo do site). Quem tem esse valor le
+    // o resultado pendente de qualquer pessoa, entao ele mora aqui, fora do git,
+    // como o token. As duas URLs so mudam se o Worker mudar de rota.
+    "robloxVerify": {
+        "startUrl": "https://daeese.me/oauth/roblox/start",
+        "resultUrl": "https://daeese.me/oauth/roblox/result",
+        "apiSecret": ""
+    },
+
+    // MUSICA. YouTube, SoundCloud e Spotify. Video do YouTube e baixado
+    // inteiro pelo yt-dlp para o /tmp PRIVADO da unit (PrivateTmp=yes), tocado
+    // e apagado logo em seguida; SoundCloud toca por streaming; link do Spotify
+    // e procurado no SoundCloud e, se nao bater, no YouTube. O bot nao guarda
+    // audio nenhum. Os limites moram aqui porque sao do disco e da banda desta
+    // maquina, nao de um servidor: maxTrackMinutes vale para o que e baixado,
+    // maxStreamMinutes para o que toca por streaming.
+    //
+    // ytDlpPath precisa ser ABSOLUTO quando o bot roda pelo systemd de usuario:
+    // o PATH dele e so /usr/local/bin:/usr/bin, e o binario standalone do
+    // yt-dlp fica em ~/.local/bin. jsRuntimes e o runtime JS que o YouTube
+    // passou a exigir; o yt-dlp so procura o Deno sozinho.
+    //
+    // Sem o yt-dlp o bot sobe igual, e o /play responde que a musica esta
+    // indisponivel. A linha [musica] do log na subida diz o que faltou.
+    "music": {
+        "ytDlpPath": "/home/USUARIO/.local/bin/yt-dlp",
+        "ffmpegPath": "ffmpeg",
+        "jsRuntimes": "node",
+        "maxTrackMinutes": 15,
+        "maxStreamMinutes": 180,
+        "maxQueueLength": 50,
+        "maxPlaylistTracks": 50,
+        "maxFileSizeMB": 60,
+        "idleLeaveMinutes": 2
+    },
+
+    // FEED DE COMMITS. Opcional: sem repoPath, guildId e channelId, desligado.
+    // A cada pollSeconds o bot olha o branch do repositorio git local e posta
+    // no canal um resumo de cada commit novo (mensagem, arquivos, +/-) com o
+    // .patch em anexo. So le o repositorio: nada de fetch, checkout ou lock.
+    //
+    // Na primeira subida (ou quando repositorio/branch mudam) ele posta so o
+    // commit mais recente, como prova de que chegou, e dai em diante so os
+    // novos. O ultimo postado fica em data/git-feed.json.
+    //
+    // O canal precisa ser PRIVADO se o repositorio for de codigo de servidor:
+    // o .patch entrega a logica inteira a quem le.
+    "gitFeed": {
+        "repoPath": "",
+        "branch": "main",
+        "guildId": null,
+        "channelId": null,
+        "title": "Commits",
+        "pollSeconds": 30
+    },
+
+    // IA local: o mesmo modelo do ccore (llama.cpp). O ccore liga e desliga;
+    // aqui o bot so responde a mencao enquanto o servidor estiver de pe, e so
+    // nos servidores listados. systemPrompt vazio usa a persona padrao.
+    "localAi": {
+        "baseUrl": "http://127.0.0.1:9931",
+        "guildIds": [],
+        "operatorUserIds": [],
+        "systemPrompt": "",
+        "cooldownSeconds": 20,
+        "maxTokens": 400
+    }
+
+    // O RESTO DA CONFIGURACAO NAO MORA MAIS AQUI.
+    //
+    // Canal de log de moderacao, canal-armadilha do softban automatico, os tres
+    // ajustes de ticket e os cargos da verificacao Roblox agora sao POR
+    // SERVIDOR, e quem os define e quem tem Gerenciar Servidor, pelo comando
+    // /config - sem precisar de acesso a esta maquina. Use /config ver para ver
+    // como esta.
+    //
+    // Se voce ja tinha as chaves antigas preenchidas aqui, o bot as move sozinho
+    // para o novo formato na primeira subida.
+}

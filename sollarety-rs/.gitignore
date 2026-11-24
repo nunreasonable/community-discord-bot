@@ -1,0 +1,5 @@
+/target
+# O config real carrega o token do bot; data/ e o estado de cada instalacao.
+/config/config.jsonc
+/config/lore.md
+/data/

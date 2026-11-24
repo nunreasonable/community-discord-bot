@@ -1,0 +1,41 @@
+[package]
+name = "sollarety"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Todas as dependencias do port ficam aqui desde a base, para os modulos nao
+# precisarem mexer neste arquivo ao mesmo tempo.
+[dependencies]
+poise = "0.7.1"
+# "voice" liga o lado do gateway que o songbird usa; o resto sao os padroes
+# do serenity, que o poise ja pede.
+serenity = { version = "0.12", default-features = false, features = ["builder", "cache", "chrono", "client", "collector", "framework", "gateway", "http", "model", "rustls_backend", "utils", "voice"] }
+# DAVE (E2EE de voz, obrigatorio no Discord desde marco de 2026) vem pelo
+# crate davey, dentro do driver do songbird. O Opus vem do opus2: usa a
+# libopus do sistema se o pkg-config achar, senao compila com cmake.
+songbird = { version = "0.6.1", default-features = false, features = ["driver", "gateway", "rustls", "serenity", "tungstenite", "builtin-queue"] }
+# O songbird nao pede codec nenhum ao Symphonia: quem decide e o projeto. O
+# ffmpeg entrega PCM/wav, e o resto cobre arquivo baixado pelo yt-dlp.
+symphonia = { version = "0.5", default-features = false, features = ["aac", "alac", "flac", "isomp4", "mkv", "mp3", "ogg", "pcm", "vorbis", "wav"] }
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["gzip", "json", "rustls-tls", "stream"] }
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+json_comments = "0.2"
+# Mapa que guarda a ordem de insercao: os dicionarios dos arquivos de data/
+# voltam para o disco na mesma ordem em que o C# os escreveu.
+indexmap = { version = "2", features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unicode-normalization = "0.1"
+rand = "0.9"
+# kill(2) no grupo de processos: matar so o pai deixaria o node e o ffmpeg do
+# yt-dlp segurando arquivo.
+libc = "0.2"
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
