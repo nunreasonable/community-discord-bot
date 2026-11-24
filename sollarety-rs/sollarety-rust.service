@@ -1,0 +1,35 @@
+[Unit]
+Description=Sollarety em Rust
+# Mesmo token do bot em C#: os dois nunca podem rodar juntos. Com o Conflicts,
+# subir esta unit para o community-bot.service e subir aquela para esta - a
+# troca e a volta sao um "systemctl --user start" cada.
+Conflicts=community-bot.service
+
+[Service]
+Type=simple
+
+# Mesmo gate de rede do bot em C# (ver o community-bot.service e o
+# wait-for-discord.sh): o systemd de usuario nao tem network-online.target.
+ExecStartPre=-/usr/bin/timeout 85 /usr/bin/bash /home/daeese/daeesewrkspc/community-discord-bot/wait-for-discord.sh
+TimeoutStartSec=100
+
+# config/ e data/ ficam sob SOLLARETY_HOME. Aponta para o MESMO diretorio do
+# bot em C# (o dele e o do executavel), entao os dois leem e gravam os mesmos
+# arquivos: nada se perde na troca nem na volta.
+Environment=SOLLARETY_HOME=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot/bin/Release/net10.0
+WorkingDirectory=/home/daeese/daeesewrkspc/community-discord-bot/CommunityBot/bin/Release/net10.0
+ExecStart=/home/daeese/daeesewrkspc/community-discord-bot-rust/sollarety-rs/target/release/sollarety
+Environment=RUST_LOG=info
+
+Restart=on-failure
+RestartSec=10
+# O primeiro sinal faz o desligamento limpo (modulos, gateway, flush do XP).
+KillSignal=SIGINT
+TimeoutStopSec=40
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+
+# Sem [Install] por enquanto: enquanto o teste nao passar, quem sobe no boot
+# continua sendo o community-bot.service.
