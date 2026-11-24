@@ -9,7 +9,7 @@ use poise::{CreateReply, serenity_prelude as serenity};
 use rand::Rng;
 use serenity::Mentionable;
 
-use super::{common, dice, sha256::stable_hash_of};
+use super::{common, dice, stable_hash::stable_hash_of};
 use crate::{Context, Data, Error, embeds, scope};
 
 const EIGHT_BALL: &[&str] = &[

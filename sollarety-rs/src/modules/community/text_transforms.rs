@@ -18,7 +18,7 @@ use std::sync::LazyLock;
 use unicode_normalization::UnicodeNormalization;
 
 use super::legacy_random::LegacyRandom;
-use super::sha256::stable_hash_of;
+use super::stable_hash::stable_hash_of;
 
 /// ｖａｐｏｒｗａｖｅ: ASCII visivel vira a forma de largura cheia.
 pub fn vaporwave(text: &str) -> String {

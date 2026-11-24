@@ -23,6 +23,8 @@ reqwest = { version = "0.12", default-features = false, features = ["gzip", "jso
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# StableHash do /rate e do /text mock (SHA-256, como no C#).
+sha2 = "0.10"
 json_comments = "0.2"
 # Mapa que guarda a ordem de insercao: os dicionarios dos arquivos de data/
 # voltam para o disco na mesma ordem em que o C# os escreveu.

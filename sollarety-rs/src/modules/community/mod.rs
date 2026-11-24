@@ -24,7 +24,7 @@ mod legacy_random;
 mod levels;
 mod profile;
 mod roleplay;
-mod sha256;
+mod stable_hash;
 mod text;
 mod text_transforms;
 
