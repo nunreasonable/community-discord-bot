@@ -31,5 +31,8 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 RestrictSUIDSGID=yes
 
-# Sem [Install] por enquanto: enquanto o teste nao passar, quem sobe no boot
-# continua sendo o community-bot.service.
+# Desde 2026-11-25 e esta unit que sobe no boot, no lugar do
+# community-bot.service (que fica instalado, desabilitado, para a volta).
+
+[Install]
+WantedBy=default.target
