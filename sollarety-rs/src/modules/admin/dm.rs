@@ -235,12 +235,7 @@ async fn role(
 }
 
 /// DMs one member of this server
-#[poise::command(
-    slash_command,
-    guild_only,
-    required_permissions = "MANAGE_GUILD",
-    required_bot_permissions = "VIEW_CHANNEL"
-)]
+#[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 async fn user(
     ctx: Context<'_>,
     #[description = "Who gets the DM (must be in this server)"] user: serenity::User,
@@ -689,6 +684,11 @@ fn discord_error(error: &serenity::Error) -> (Option<u16>, Option<isize>) {
 
 fn failure(name: String, error: &serenity::Error) -> Failure {
     let (status, code) = discord_error(error);
+    // O relatorio agrupa por motivo; o erro cru fica no log para conferir um
+    // "DMs fechadas" que ninguem esperava.
+    tracing::info!(
+        "[admin] DM para {name} nao chegou: status {status:?}, codigo {code:?}: {error}"
+    );
     Failure {
         name,
         kind: report::classify(status, code),

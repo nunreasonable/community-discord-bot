@@ -55,10 +55,20 @@ pub async fn on_error(err: FrameworkError<'_, Data, Error>) {
         // pretendido -, mas so o cooldown respondia sozinho no C#. As outras
         // ganham uma explicacao, senao o /ban sem a permissao Ban Members no
         // bot morria em "A aplicacao nao respondeu".
-        FrameworkError::MissingBotPermissions { ctx, .. } => {
+        // Diz QUAL permissao falta e que pode ser so neste canal: o caso comum
+        // e o comando usado num canal privado onde o bot nao entra, e "neste
+        // servidor" mandava a pessoa mexer no cargo errado.
+        FrameworkError::MissingBotPermissions {
+            ctx,
+            missing_permissions,
+            ..
+        } => {
             denied(
                 ctx,
-                "**I** don't have the permission this needs in this server — check the bot's role",
+                &format!(
+                    "**I** need {} here — give the bot's role access to this channel, or check its role in the server",
+                    missing_permissions.get_permission_names().join(", ")
+                ),
             )
             .await;
         }
