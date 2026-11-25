@@ -1,4 +1,5 @@
-//! Administracao: /send, /role add|remove|strip e /dm role|user. As funcoes
+//! Administracao: /send, /role add|remove|strip, /dm role|user, /deployment e
+//! /dmdeployment role|user. As funcoes
 //! genericas do painel web do ccore (send_message, change_role,
 //! remove_from_regiment, dm_start/dm_status/dm_cancel), como slash comandos
 //! e sem site.
@@ -9,6 +10,8 @@
 //!   remove_from_regiment, punishment_dm) -> roles.rs, gate.rs
 //! - src/dashboard/jobs.rs + src/dm.rs (DmLimiter, resolve, send_tracked,
 //!   describe_failures) -> dm.rs, report.rs
+//! - src/deployment.rs, src/commands/deployment.rs e o dmdeployment de
+//!   src/commands/massdm.rs -> deploy.rs (o envio por DM reusa o dm.rs)
 //!
 //! TRAVADO em servidor, como o painel era travado no servidor do regimento:
 //! os comandos so sao registrados nos servidores de `admin.guildIds` (ver
@@ -19,6 +22,7 @@
 //! Estado proprio (envios em andamento, o limitador de DM) mora em `static`s
 //! do dm.rs.
 
+mod deploy;
 mod dm;
 mod gate;
 mod modal;
@@ -33,10 +37,9 @@ use crate::{Data, Error, scope};
 /// Todos so dentro de servidor. O registro so os leva para os servidores de
 /// admin.guildIds; fora deles nem aparecem.
 pub fn commands() -> Vec<poise::Command<Data, Error>> {
-    vec![send::send(), roles::role_group(), dm::dm_group()]
-        .into_iter()
-        .map(scope::guild_only)
-        .collect()
+    let mut all = vec![send::send(), roles::role_group(), dm::dm_group()];
+    all.extend(deploy::commands());
+    all.into_iter().map(scope::guild_only).collect()
 }
 
 /// So o botao de cancelar da DM em massa chega por aqui: os outros botoes e

@@ -292,8 +292,8 @@ impl LocalAiSettings {
     }
 }
 
-/// Modulo admin (/send, /role, /dm): mandar mensagem como o bot, mexer em
-/// cargo e DM em massa. Como o painel do ccore, fica TRAVADO nos servidores
+/// Modulo admin (/send, /role, /dm, /deployment, /dmdeployment): mandar
+/// mensagem como o bot, mexer em cargo, DM em massa e convocacao. Como o painel do ccore, fica TRAVADO nos servidores
 /// listados: os comandos so sao registrados la, e cada um confere de novo na
 /// execucao (o arquivo muda sem novo registro). Vazio desliga em todo lugar.
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -301,6 +301,74 @@ impl LocalAiSettings {
 pub struct AdminSettings {
     #[serde(deserialize_with = "null_default")]
     pub guild_ids: Vec<u64>,
+    /// /deployment e /dmdeployment (o deployment do ccore).
+    #[serde(deserialize_with = "null_default")]
+    pub deployment: DeploymentSettings,
+}
+
+/// A convocacao para uma partida (o deployment do ccore). Tudo opcional e
+/// lido com tolerancia: um valor de tipo errado vira "nao configurado" em vez
+/// de derrubar o config inteiro, que e relido a quente.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DeploymentSettings {
+    /// Canal onde o /deployment posta.
+    #[serde(deserialize_with = "id")]
+    pub channel_id: Option<u64>,
+    /// Quem pode usar os dois comandos. Vazio: quem tem Gerenciar Servidor.
+    #[serde(deserialize_with = "ids")]
+    pub allowed_role_ids: Vec<u64>,
+    /// Cargos pingados no post (so os que existem no servidor).
+    #[serde(deserialize_with = "ids")]
+    pub default_roles: Vec<u64>,
+    #[serde(deserialize_with = "text")]
+    pub game_link: Option<String>,
+    #[serde(deserialize_with = "text")]
+    pub voice_chat_link: Option<String>,
+    #[serde(deserialize_with = "text")]
+    pub title: Option<String>,
+    #[serde(deserialize_with = "text")]
+    pub voice_channel: Option<String>,
+    #[serde(deserialize_with = "text")]
+    pub image_url: Option<String>,
+    /// Numero ou texto, como no ccore.
+    #[serde(deserialize_with = "text")]
+    pub place_id: Option<String>,
+    /// Modelo com CODE_HERE ou {CODE}; tem prioridade sobre o placeId.
+    #[serde(deserialize_with = "text")]
+    pub quick_launch_link: Option<String>,
+    /// Link no texto da DM (para o preview); vazio usa o gameLink.
+    #[serde(deserialize_with = "text")]
+    pub dm_game_link: Option<String>,
+}
+
+/// Lista de ids como numeros ou textos; o que nao for id fica de fora.
+fn ids<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u64>, D::Error> {
+    let one = |v: &serde_json::Value| match v {
+        serde_json::Value::Number(n) => n.as_u64(),
+        serde_json::Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    };
+    Ok(match Option::<serde_json::Value>::deserialize(d)? {
+        Some(serde_json::Value::Array(items)) => items.iter().filter_map(one).collect(),
+        Some(v) => one(&v).into_iter().collect(),
+        None => Vec::new(),
+    }
+    .into_iter()
+    .filter(|&id| id != 0)
+    .collect())
+}
+
+/// Texto (ou numero, para o placeId) sem espacos nas pontas; vazio, null ou
+/// outro tipo vira None.
+fn text<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let raw = match Option::<serde_json::Value>::deserialize(d)? {
+        Some(serde_json::Value::String(s)) => s,
+        Some(serde_json::Value::Number(n)) => n.to_string(),
+        _ => return Ok(None),
+    };
+    let trimmed = raw.trim();
+    Ok((!trimmed.is_empty()).then(|| trimmed.to_owned()))
 }
 
 impl AdminSettings {
@@ -483,6 +551,75 @@ mod tests {
                 .guild_ids
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn deployment_com_todas_as_chaves() {
+        let config = Config::parse(
+            r#"{ "admin": { "deployment": {
+                "channelId": "123",
+                "allowedRoleIds": [1, "2", "x", 0, null],
+                "defaultRoles": [3],
+                "gameLink": " https://www.roblox.com/games/1/x ",
+                "voiceChatLink": "https://discord.com/channels/1/2",
+                "title": "Deploy :Sword:",
+                "voiceChannel": "Main VC",
+                "imageUrl": "https://x.test/a.png",
+                "placeId": 456,
+                "quickLaunchLink": "https://x.test/{CODE}",
+                "dmGameLink": "https://x.test/dm",
+                "outraChave": true
+            } } }"#,
+        )
+        .unwrap();
+        let d = &config.admin.deployment;
+        assert_eq!(d.channel_id, Some(123));
+        assert_eq!(d.allowed_role_ids, [1, 2]);
+        assert_eq!(d.default_roles, [3]);
+        assert_eq!(
+            d.game_link.as_deref(),
+            Some("https://www.roblox.com/games/1/x")
+        );
+        assert_eq!(d.title.as_deref(), Some("Deploy :Sword:"));
+        assert_eq!(d.voice_channel.as_deref(), Some("Main VC"));
+        assert_eq!(d.place_id.as_deref(), Some("456"));
+        assert_eq!(
+            d.quick_launch_link.as_deref(),
+            Some("https://x.test/{CODE}")
+        );
+        assert_eq!(d.dm_game_link.as_deref(), Some("https://x.test/dm"));
+        assert!(d.voice_chat_link.is_some() && d.image_url.is_some());
+    }
+
+    #[test]
+    fn deployment_vazio_null_ou_tipo_errado() {
+        for json in [
+            r#"{}"#,
+            r#"{ "admin": { "guildIds": [1] } }"#,
+            r#"{ "admin": { "deployment": null } }"#,
+            r#"{ "admin": { "deployment": {} } }"#,
+            r#"{ "admin": { "deployment": { "channelId": null, "allowedRoleIds": null,
+                "defaultRoles": "abc", "gameLink": "  ", "title": false, "placeId": [1] } } }"#,
+        ] {
+            let d = Config::parse(json).unwrap().admin.deployment;
+            assert_eq!(d.channel_id, None, "{json}");
+            assert!(d.allowed_role_ids.is_empty() && d.default_roles.is_empty());
+            assert!(d.game_link.is_none() && d.title.is_none() && d.place_id.is_none());
+        }
+        // Um id so, fora de lista, tambem vale.
+        let d = Config::parse(r#"{ "admin": { "deployment": { "defaultRoles": "77" } } }"#)
+            .unwrap()
+            .admin
+            .deployment;
+        assert_eq!(d.default_roles, [77]);
+    }
+
+    #[test]
+    fn o_exemplo_le() {
+        // O exemplo e o que se copia: tem de continuar lendo.
+        let config = Config::parse(include_str!("../config/config.example.jsonc")).unwrap();
+        let d = &config.admin.deployment;
+        assert!(d.channel_id.is_none() && d.title.is_none() && d.place_id.is_none());
     }
 
     #[test]

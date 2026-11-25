@@ -1,5 +1,7 @@
 //! /dm role e /dm user: DM com a mensagem da staff (o dm_start/dm_status/
 //! dm_cancel do painel do ccore, com o mesmo limitador e as mesmas travas).
+//! O /dmdeployment (deploy.rs) usa a mesma maquina: `start_role_job` e
+//! `send_single` recebem a DM pronta e dizem onde responder.
 //!
 //! Uma DM em massa leva MUITO mais que os 15 minutos de um token de
 //! interacao (500 pessoas no ritmo do limitador passam de 25 minutos). Por
@@ -212,22 +214,7 @@ async fn role(
 
     // Tudo que da para recusar sem rede vem antes do modal, para ninguem
     // escrever a mensagem a toa.
-    let refusal = if role_id.get() == guild_id.get() {
-        Some(embeds::error(
-            "Invalid role",
-            "Pick a specific role; DMing the whole server through @everyone isn't allowed.",
-        ))
-    } else if ctx.guild().is_none_or(|g| !g.roles.contains_key(&role_id)) {
-        Some(embeds::error(
-            "Invalid role",
-            "That role isn't in this server.",
-        ))
-    } else if JOBS.running(guild_id.get()) {
-        Some(busy())
-    } else {
-        None
-    };
-    if let Some(embed) = refusal {
+    if let Some(embed) = role_refusal(ctx, guild_id, role_id) {
         ctx.send(poise::CreateReply::default().embed(embed).ephemeral(true))
             .await?;
         return Ok(());
@@ -237,7 +224,11 @@ async fn role(
         return Ok(());
     };
     modal::guard(ctx, &submit, async {
-        start_role_job(ctx, &submit, guild_id, role_id, &text).await
+        if let Some(embed) = check_text(&text) {
+            return modal::finish(ctx.http(), &submit, embed).await;
+        }
+        let payload = staff_payload(ctx, guild_id, &text);
+        start_role_job(ctx, Reply::Modal(&submit), guild_id, role_id, payload).await
     })
     .await;
     Ok(())
@@ -261,25 +252,7 @@ async fn user(
         .guild_id()
         .ok_or("comando de servidor fora de servidor")?;
 
-    let refusal = if user.bot {
-        Some(embeds::error(
-            "Invalid user",
-            "Bots can't receive DMs from me.",
-        ))
-    } else if hierarchy::try_get_member(ctx, guild_id, user.id)
-        .await?
-        .is_none()
-    {
-        // So membro DESTE servidor: o bot nao vira canal para mandar DM a
-        // qualquer conta do Discord.
-        Some(embeds::error(
-            "Not a member",
-            format!("<@{}> isn't in this server.", user.id),
-        ))
-    } else {
-        None
-    };
-    if let Some(embed) = refusal {
+    if let Some(embed) = user_refusal(ctx, guild_id, &user).await? {
         ctx.send(poise::CreateReply::default().embed(embed).ephemeral(true))
             .await?;
         return Ok(());
@@ -289,10 +262,122 @@ async fn user(
         return Ok(());
     };
     modal::guard(ctx, &submit, async {
-        send_single(ctx, &submit, guild_id, &user, &text).await
+        if let Some(embed) = check_text(&text) {
+            return modal::finish(ctx.http(), &submit, embed).await;
+        }
+        let payload = staff_payload(ctx, guild_id, &text);
+        send_single(ctx, Reply::Modal(&submit), guild_id, &user, payload).await
     })
     .await;
     Ok(())
+}
+
+/// Recusas de um envio para um cargo que nao precisam de rede: @everyone,
+/// cargo de outro servidor, envio ja rodando.
+pub(super) fn role_refusal(
+    ctx: Context<'_>,
+    guild_id: serenity::GuildId,
+    role_id: serenity::RoleId,
+) -> Option<serenity::CreateEmbed> {
+    if role_id.get() == guild_id.get() {
+        Some(embeds::error(
+            "Invalid role",
+            "Pick a specific role; DMing the whole server through @everyone isn't allowed.",
+        ))
+    } else if ctx.guild().is_none_or(|g| !g.roles.contains_key(&role_id)) {
+        Some(embeds::error(
+            "Invalid role",
+            "That role isn't in this server.",
+        ))
+    } else if JOBS.running(guild_id.get()) {
+        Some(busy())
+    } else {
+        None
+    }
+}
+
+/// Recusas de uma DM para uma pessoa so: bot, ou quem nao e deste servidor.
+pub(super) async fn user_refusal(
+    ctx: Context<'_>,
+    guild_id: serenity::GuildId,
+    user: &serenity::User,
+) -> Result<Option<serenity::CreateEmbed>, Error> {
+    if user.bot {
+        return Ok(Some(embeds::error(
+            "Invalid user",
+            "Bots can't receive DMs from me.",
+        )));
+    }
+    // So membro DESTE servidor: o bot nao vira canal para mandar DM a
+    // qualquer conta do Discord.
+    if hierarchy::try_get_member(ctx, guild_id, user.id)
+        .await?
+        .is_none()
+    {
+        return Ok(Some(embeds::error(
+            "Not a member",
+            format!("<@{}> isn't in this server.", user.id),
+        )));
+    }
+    Ok(None)
+}
+
+/// Onde o resultado aparece: no envio do modal (/dm) ou na resposta ja
+/// deferida do proprio comando (/dmdeployment, que nao tem modal).
+#[derive(Clone, Copy)]
+pub(super) enum Reply<'a> {
+    Modal(&'a serenity::ModalInteraction),
+    Command,
+}
+
+impl Reply<'_> {
+    pub(super) async fn show(
+        self,
+        ctx: Context<'_>,
+        embed: serenity::CreateEmbed,
+    ) -> Result<(), Error> {
+        match self {
+            Self::Modal(submit) => modal::finish(ctx.http(), submit, embed).await,
+            Self::Command => gate::respond(ctx, embed).await,
+        }
+    }
+}
+
+/// Os titulos do registro de moderacao de cada tipo de envio.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Labels {
+    pub started: &'static str,
+    pub finished: &'static str,
+    pub single: &'static str,
+}
+
+const STAFF: Labels = Labels {
+    started: "Mass DM started",
+    finished: "Mass DM finished",
+    single: "DM sent",
+};
+
+pub(super) const DEPLOYMENT: Labels = Labels {
+    started: "Deployment DM started",
+    finished: "Deployment DM finished",
+    single: "Deployment DM sent",
+};
+
+/// A DM pronta e o que o registro mostra dela.
+pub(super) struct Payload {
+    pub message: serenity::CreateMessage,
+    pub labels: Labels,
+    /// Vai no registro depois da linha do alvo (o texto ja cortado).
+    pub details: String,
+}
+
+fn staff_payload(ctx: Context<'_>, guild_id: serenity::GuildId, text: &str) -> Payload {
+    let (server, icon) = server_info(ctx.serenity_context(), guild_id);
+    Payload {
+        message: dm_message(&server, icon, text),
+        labels: STAFF,
+        details: format!("Message:\n{}", embeds::trim(text, 600)),
+    }
 }
 
 fn ask(title: &str) -> modal::Ask<'_> {
@@ -329,7 +414,10 @@ fn check_text(text: &str) -> Option<serenity::CreateEmbed> {
 }
 
 /// O nome e o icone do servidor, do cache.
-fn server_info(ctx: &serenity::Context, guild_id: serenity::GuildId) -> (String, Option<String>) {
+pub(super) fn server_info(
+    ctx: &serenity::Context,
+    guild_id: serenity::GuildId,
+) -> (String, Option<String>) {
     match ctx.cache.guild(guild_id) {
         Some(g) => (g.name.clone(), g.icon_url()),
         None => ("this server".to_owned(), None),
@@ -388,33 +476,31 @@ fn check_count(count: usize, role_id: u64) -> Result<(), String> {
     Ok(())
 }
 
-async fn start_role_job(
+/// Comeca o envio em massa para quem tem o cargo e responde em `reply`.
+pub(super) async fn start_role_job(
     ctx: Context<'_>,
-    submit: &serenity::ModalInteraction,
+    reply: Reply<'_>,
     guild_id: serenity::GuildId,
     role_id: serenity::RoleId,
-    text: &str,
+    payload: Payload,
 ) -> Result<(), Error> {
-    if let Some(embed) = check_text(text) {
-        return modal::finish(ctx.http(), submit, embed).await;
-    }
     // A trava de novo: o config pode ter mudado com o modal aberto.
     if !gate::guild_allowed(Some(guild_id)) {
-        return modal::finish(ctx.http(), submit, gate::locked_embed()).await;
+        return reply.show(ctx, gate::locked_embed()).await;
     }
     if JOBS.running(guild_id.get()) {
-        return modal::finish(ctx.http(), submit, busy()).await;
+        return reply.show(ctx, busy()).await;
     }
 
     let recipients = match resolve(ctx.serenity_context(), guild_id, role_id).await {
         Ok(found) => found,
         Err(why) => {
-            return modal::finish(ctx.http(), submit, embeds::error("Can't send", why)).await;
+            return reply.show(ctx, embeds::error("Can't send", why)).await;
         }
     };
 
     let Some(job) = JOBS.register(guild_id.get(), ctx.author().id.get()) else {
-        return modal::finish(ctx.http(), submit, busy()).await;
+        return reply.show(ctx, busy()).await;
     };
 
     let tally = Tally {
@@ -438,18 +524,18 @@ async fn start_role_job(
         Ok(message) => message,
         Err(cause) => {
             JOBS.finish(guild_id.get(), &job.id);
-            return modal::finish(
-                ctx.http(),
-                submit,
-                embeds::error(
+            return reply
+                .show(
+                    ctx,
+                    embeds::error(
                     "Can't post the progress message",
                     format!(
                         "I need to post and edit a progress message in this channel. Nothing was sent.\n\nDetails: {}",
-                        embeds::trim(&cause.to_string(), 400)
+                            embeds::trim(&cause.to_string(), 400)
+                        ),
                     ),
-                ),
-            )
-            .await;
+                )
+                .await;
         }
     };
 
@@ -461,20 +547,19 @@ async fn start_role_job(
     let job_id = job.id.clone();
     let link = progress.link();
     let extra = format!(
-        "Role: <@&{role_id}> · {count} recipient(s) · {link}\n\nMessage:\n{}",
-        embeds::trim(text, 600)
+        "Role: <@&{role_id}> · {count} recipient(s) · {link}\n\n{}",
+        payload.details
     );
     modlog::record(
         ctx,
         &ctx.data().guild_settings,
         guild_id,
-        modlog::Entry::new("Mass DM started", ctx.author())
+        modlog::Entry::new(payload.labels.started, ctx.author())
             .no_target_label(&format!("<@&{role_id}>"))
             .extra(&extra),
     )
     .await;
 
-    let (server, icon) = server_info(ctx.serenity_context(), guild_id);
     let run = Run {
         ctx: ctx.serenity_context().clone(),
         data: ctx.data().clone(),
@@ -482,7 +567,8 @@ async fn start_role_job(
         job,
         starter: ctx.author().clone(),
         recipients,
-        message: dm_message(&server, icon, text),
+        message: payload.message,
+        labels: payload.labels,
         channel_id,
         message_id: progress.id,
         started_unix,
@@ -502,7 +588,7 @@ async fn start_role_job(
             report::eta_text(count, PER_DM)
         ),
     );
-    if let Err(cause) = modal::finish(ctx.http(), submit, started).await {
+    if let Err(cause) = reply.show(ctx, started).await {
         tracing::warn!(
             "[admin] DM em massa {job_id}: nao consegui confirmar a quem pediu: {cause}"
         );
@@ -512,35 +598,31 @@ async fn start_role_job(
 
 /// Uma pessoa so: cabe folgado no token da interacao, entao o relatorio vem
 /// na propria resposta efemera, no mesmo formato do envio em massa.
-async fn send_single(
+pub(super) async fn send_single(
     ctx: Context<'_>,
-    submit: &serenity::ModalInteraction,
+    reply: Reply<'_>,
     guild_id: serenity::GuildId,
     user: &serenity::User,
-    text: &str,
+    payload: Payload,
 ) -> Result<(), Error> {
-    if let Some(embed) = check_text(text) {
-        return modal::finish(ctx.http(), submit, embed).await;
-    }
     if !gate::guild_allowed(Some(guild_id)) {
-        return modal::finish(ctx.http(), submit, gate::locked_embed()).await;
+        return reply.show(ctx, gate::locked_embed()).await;
     }
     let name = match hierarchy::try_get_member(ctx, guild_id, user.id).await? {
         Some(member) => member.display_name().to_owned(),
         None => {
-            return modal::finish(
-                ctx.http(),
-                submit,
-                embeds::error(
-                    "Not a member",
-                    format!("<@{}> isn't in this server.", user.id),
-                ),
-            )
-            .await;
+            return reply
+                .show(
+                    ctx,
+                    embeds::error(
+                        "Not a member",
+                        format!("<@{}> isn't in this server.", user.id),
+                    ),
+                )
+                .await;
         }
     };
 
-    let (server, icon) = server_info(ctx.serenity_context(), guild_id);
     let started = Instant::now();
     let mut tally = Tally {
         target: format!("<@{}>", user.id),
@@ -548,29 +630,25 @@ async fn send_single(
         ..Default::default()
     };
     LIMITER.wait().await;
-    match user
-        .id
-        .direct_message(ctx, dm_message(&server, icon, text))
-        .await
-    {
+    match user.id.direct_message(ctx, payload.message).await {
         Ok(_) => tally.delivered.push(name),
         Err(cause) => tally.failures.push(failure(name, &cause)),
     }
     let outcome = Outcome::Finished;
     let result = report::final_report(&tally, &outcome, started.elapsed());
-    modal::finish(ctx.http(), submit, result.to_embed()).await?;
+    reply.show(ctx, result.to_embed()).await?;
 
     let delivered = if tally.sent() == 1 {
         "Delivered."
     } else {
         "Not delivered (DMs closed or an error)."
     };
-    let extra = format!("{delivered}\n\nMessage:\n{}", embeds::trim(text, 600));
+    let extra = format!("{delivered}\n\n{}", payload.details);
     modlog::record(
         ctx,
         &ctx.data().guild_settings,
         guild_id,
-        modlog::Entry::new("DM sent", ctx.author())
+        modlog::Entry::new(payload.labels.single, ctx.author())
             .target(user)
             .extra(&extra),
     )
@@ -626,6 +704,7 @@ struct Run {
     starter: serenity::User,
     recipients: Vec<Recipient>,
     message: serenity::CreateMessage,
+    labels: Labels,
     channel_id: serenity::ChannelId,
     message_id: serenity::MessageId,
     started_unix: i64,
@@ -725,7 +804,7 @@ impl Run {
             &self.ctx,
             &self.data.guild_settings,
             self.guild_id,
-            modlog::Entry::new("Mass DM finished", &self.starter)
+            modlog::Entry::new(self.labels.finished, &self.starter)
                 .no_target_label(&tally.target)
                 .extra(&extra),
         )

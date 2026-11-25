@@ -276,8 +276,47 @@ recusas que valem auditar, vao para o canal de log de moderacao via
 | `/dm user user` | Manage Server | Modal (1024, o teto de campo de embed). So membro deste servidor, nada de bot. O relatorio vem na resposta efemera. |
 | `/dm role role` | Administrator | Modal (1024). Membros com o cargo, sem bots, no maximo 500; um envio por servidor. Mensagem de progresso COMUM no canal (sem ping), editada pelo canal a cada ~10 s - o token da interacao morre em 15 min e 500 DMs levam ~30 min -, com botao Cancel (quem comecou ou um Administrator). No fim o mesmo embed vira o relatorio: cor/titulo pelo desfecho, Target/Total/Sent/Failed/Duration, entregues e falhas agrupadas por motivo, cortadas em 1024 por campo e 6000 no embed. |
 
-A DM e um embed "Message from the staff of <servidor>" com o texto num
+A DM do `/dm` e um embed "Message from the staff of <servidor>" com o texto num
 campo; nunca fala em nome de uma pessoa.
+
+**Deployment** (`deploy.rs`, porte do `deployment.rs`/`/deployment`/
+`/dmdeployment` do ccore). Configurado em `admin.deployment` (todas as chaves
+opcionais, explicadas no `config.example.jsonc`):
+
+```jsonc
+"admin": {
+    "guildIds": [1406658194071355415],
+    "deployment": {
+        "channelId": 123456789012345678,
+        "allowedRoleIds": [],
+        "defaultRoles": [234567890123456789],
+        "gameLink": "https://www.roblox.com/games/1234567890/Some-Game",
+        "dmGameLink": "",
+        "title": ":sword: Deployment",
+        "voiceChannel": "Main VC",
+        "voiceChatLink": "https://discord.com/channels/1406658194071355415/345678901234567890",
+        "imageUrl": "",
+        "placeId": 1234567890,
+        "quickLaunchLink": ""
+    }
+}
+```
+
+| Comando | Quem | O que faz |
+|---|---|---|
+| `/deployment code` | `allowedRoleIds` (ou Manage Server sem a lista); dono e Administrator sempre | Posta em `channelId` (recusa se nao configurado, se nao for canal de texto deste servidor ou se o bot nao tem View/Send/Embed Links la). Embed como o do ccore: titulo (`:nome:` vira emoji do servidor; padrao "Deployment"), mencoes, linha de voz (some sem config), codigo sem markdown (`sanitize`) e link de entrada rapida com o codigo escapado (`escape`); botao Quick Launch. Pinga so os `defaultRoles` que existem no servidor, com `allowed_mentions` exatamente nesses cargos (nunca usuario/@everyone/@here). Imagem invalida: posta sem ela e avisa quem pediu. Resposta efemera com link, cargos pingados e aviso de cargo que nao notifica. Vai para o modlog. |
+| `/dmdeployment role role code [message]` | Igual ao `/deployment` | A maquina do `/dm role` (um envio por servidor, ritmo, progresso editado pelo canal, botao Cancel, relatorio final, teto de 500), com a DM do ccore: embed "Message for <alvo>" com os campos Code e Message (cortados em 1024) e o `dmGameLink` (ou `gameLink`) no texto para o preview. |
+| `/dmdeployment user user code [message]` | Igual ao `/deployment` | A mesma DM para um membro deste servidor; relatorio na resposta efemera. |
+
+- Por que `/dmdeployment` e nao `/dm deployment`: o `default_member_permissions`
+  do Discord e do comando de primeiro nivel. Sob `/dm` (Manage Server), quem
+  so tem um cargo de `allowedRoleIds` nem veria o comando; e abrir o `/dm`
+  para todos mostraria `/dm role|user` a quem nao pode.
+- Visibilidade no menu: sem `allowedRoleIds`, so Manage Server ve; com a
+  lista, todos veem (o Discord nao filtra por cargo) e a conta e feita na
+  execucao. Lido na subida; a regra de quem pode vale na hora.
+- Link que nao seja http(s) valido (botao, link mascarado, imagem) e
+  descartado: o Discord recusaria a mensagem inteira.
 
 **Ritmo** (o do ccore): 3 s entre duas DMs no bot inteiro (`DmLimiter`) mais
 1,2 s de folga entre tentativas; para no primeiro sinal de rate limit

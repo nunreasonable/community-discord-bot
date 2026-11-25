@@ -87,13 +87,56 @@
         "maxTokens": 400
     },
 
-    // ADMINISTRACAO: /send (mensagem como o bot), /role add|remove|strip e
-    // /dm role|user (DM em massa). Ficam TRAVADOS nestes servidores: os
-    // comandos so sao registrados neles (nunca globalmente) e cada um confere
-    // de novo na execucao. Vazio desliga em todo lugar. Mudar a lista vale na
-    // hora para a trava; para o comando aparecer ou sumir do menu, reinicie.
+    // ADMINISTRACAO: /send (mensagem como o bot), /role add|remove|strip,
+    // /dm role|user (DM em massa), /deployment e /dmdeployment role|user.
+    // Ficam TRAVADOS nestes servidores: os comandos so sao registrados neles
+    // (nunca globalmente) e cada um confere de novo na execucao. Vazio desliga
+    // em todo lugar. Mudar a lista vale na hora para a trava; para o comando
+    // aparecer ou sumir do menu, reinicie.
     "admin": {
-        "guildIds": []
+        "guildIds": [],
+
+        // DEPLOYMENT: /deployment posta a convocacao (embed + ping dos cargos +
+        // botao Quick Launch) no canal abaixo; /dmdeployment manda o codigo
+        // por DM a um cargo ou a uma pessoa. Tudo opcional; ids como numero ou
+        // texto. Vale na hora, menos a visibilidade no menu (allowedRoleIds),
+        // que e lida na subida.
+        "deployment": {
+            // Canal de texto DESTE servidor onde o /deployment posta. O bot
+            // precisa de Ver Canal, Enviar Mensagens e Inserir Links la.
+            "channelId": null,
+            // Quem pode usar os dois comandos (alem do dono e de quem tem
+            // Administrator). Preenchido, o comando aparece no menu para todos
+            // e a conta e feita na execucao. Vazio: quem tem Gerenciar
+            // Servidor.
+            "allowedRoleIds": [],
+            // Cargos pingados no post. So os que existem no servidor; nunca
+            // @everyone/@here. Cargo nao mencionavel so notifica se o bot tiver
+            // Mencionar @everyone no canal (o /deployment avisa).
+            "defaultRoles": [],
+            // Link do jogo: botao quando nao ha entrada rapida. Vazio: sem
+            // botao (se tambem nao houver placeId nem quickLaunchLink).
+            "gameLink": "",
+            // Link no texto da DM do /dmdeployment, para o preview. Vazio usa
+            // o gameLink.
+            "dmGameLink": "",
+            // Titulo do embed. ":nome:" vira o emoji do servidor com esse nome.
+            // Vazio: "Deployment".
+            "title": "",
+            // Nome do canal de voz e o link dele (vira [nome](link)). Os dois
+            // vazios: a linha some.
+            "voiceChannel": "",
+            "voiceChatLink": "",
+            // Imagem grande do embed (http/https). Invalida: o post sai sem
+            // ela e quem pediu e avisado.
+            "imageUrl": "",
+            // Entrada rapida: quickLaunchLink com CODE_HERE ou {CODE} (trocado
+            // pelo codigo, escapado) tem prioridade; senao o placeId monta o
+            // link do Roblox (games/start?launchData=<codigo>&placeId=<id>);
+            // senao o gameLink.
+            "placeId": null,
+            "quickLaunchLink": ""
+        }
     }
 
     // O RESTO DA CONFIGURACAO NAO MORA MAIS AQUI.
