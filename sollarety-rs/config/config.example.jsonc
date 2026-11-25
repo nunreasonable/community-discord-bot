@@ -85,6 +85,15 @@
         "systemPrompt": "",
         "cooldownSeconds": 20,
         "maxTokens": 400
+    },
+
+    // ADMINISTRACAO: /send (mensagem como o bot), /role add|remove|strip e
+    // /dm role|user (DM em massa). Ficam TRAVADOS nestes servidores: os
+    // comandos so sao registrados neles (nunca globalmente) e cada um confere
+    // de novo na execucao. Vazio desliga em todo lugar. Mudar a lista vale na
+    // hora para a trava; para o comando aparecer ou sumir do menu, reinicie.
+    "admin": {
+        "guildIds": []
     }
 
     // O RESTO DA CONFIGURACAO NAO MORA MAIS AQUI.

@@ -34,6 +34,8 @@ pub struct Config {
     pub git_feed: GitFeedSettings,
     #[serde(deserialize_with = "null_default")]
     pub local_ai: LocalAiSettings,
+    #[serde(deserialize_with = "null_default")]
+    pub admin: AdminSettings,
 
     // LEGADO. Estas seis chaves viraram configuracao por servidor (/config).
     // Continuam sendo lidas so para a migracao unica do LegacyConfigMigration.
@@ -61,6 +63,7 @@ impl fmt::Debug for Config {
             .field("music", &self.music)
             .field("git_feed", &self.git_feed)
             .field("local_ai", &self.local_ai)
+            .field("admin", &self.admin)
             .finish_non_exhaustive()
     }
 }
@@ -289,6 +292,23 @@ impl LocalAiSettings {
     }
 }
 
+/// Modulo admin (/send, /role, /dm): mandar mensagem como o bot, mexer em
+/// cargo e DM em massa. Como o painel do ccore, fica TRAVADO nos servidores
+/// listados: os comandos so sao registrados la, e cada um confere de novo na
+/// execucao (o arquivo muda sem novo registro). Vazio desliga em todo lugar.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AdminSettings {
+    #[serde(deserialize_with = "null_default")]
+    pub guild_ids: Vec<u64>,
+}
+
+impl AdminSettings {
+    pub fn allows(&self, guild_id: u64) -> bool {
+        guild_id != 0 && self.guild_ids.contains(&guild_id)
+    }
+}
+
 impl Config {
     /// So o parse, sem carimbo nem cache. Vazio (ou `null`) e erro: aceitar
     /// isso faria uma janela de truncamento no meio de uma edicao zerar
@@ -436,6 +456,33 @@ mod tests {
         assert_eq!(config.local_ai.cooldown_seconds, 20);
         assert!(!config.roblox_verify.is_configured());
         assert!(!format!("{config:?}").contains("abc"));
+        // Sem a secao, o admin fica desligado em todo servidor.
+        assert!(config.admin.guild_ids.is_empty());
+        assert!(!config.admin.allows(1487938282200236224));
+    }
+
+    #[test]
+    fn admin_so_nos_servidores_listados() {
+        let config =
+            Config::parse(r#"{ "admin": { "guildIds": [1406658194071355415], "outra": true } }"#)
+                .unwrap();
+        assert!(config.admin.allows(1406658194071355415));
+        assert!(!config.admin.allows(1));
+        assert!(!config.admin.allows(0));
+        assert!(
+            Config::parse(r#"{ "admin": null }"#)
+                .unwrap()
+                .admin
+                .guild_ids
+                .is_empty()
+        );
+        assert!(
+            Config::parse(r#"{ "admin": { "guildIds": null } }"#)
+                .unwrap()
+                .admin
+                .guild_ids
+                .is_empty()
+        );
     }
 
     #[test]

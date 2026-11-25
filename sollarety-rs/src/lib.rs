@@ -18,7 +18,12 @@ pub mod process;
 pub mod scope;
 pub mod store;
 
-use std::{io::IsTerminal, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, HashSet},
+    io::IsTerminal,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use log_buffer::{BufferLayer, LogBuffer};
 use poise::serenity_prelude as serenity;
@@ -132,6 +137,10 @@ pub async fn run() -> Result<(), Error> {
     let mut guild_ids = config.guild_ids.clone();
     guild_ids.sort_unstable();
     guild_ids.dedup();
+    // Os comandos travados em servidores (o admin), com a lista lida AGORA:
+    // o registro so acontece na subida, entao e esta lista que vale para o
+    // menu ate a proxima.
+    let scoped = modules::guild_scoped(&config);
 
     let setup_data = data.clone();
     let framework = poise::Framework::builder()
@@ -153,9 +162,17 @@ pub async fn run() -> Result<(), Error> {
             },
             ..Default::default()
         })
-        .setup(move |ctx, _ready, framework| {
+        .setup(move |ctx, ready, framework| {
             Box::pin(async move {
-                register_commands(ctx, &framework.options().commands, &guild_ids).await;
+                let present: HashSet<u64> = ready.guilds.iter().map(|g| g.id.get()).collect();
+                register_commands(
+                    ctx,
+                    &framework.options().commands,
+                    &guild_ids,
+                    &scoped,
+                    &present,
+                )
+                .await;
                 Ok(setup_data)
             })
         })
@@ -222,32 +239,135 @@ async fn flush_levels(data: &Data) {
     }
 }
 
+/// Servidores onde esta subida registrou comandos travados (o admin) mesmo
+/// em modo global. A varredura de comandos de guild (moderation/sweeper.rs)
+/// pula estes: o registro da subida ja sobrescreveu a lista de la, e apagar
+/// tudo tiraria justamente esses comandos. Fixado no registro, que acontece
+/// antes de qualquer evento chegar aos modulos (o poise segura os eventos ate
+/// o setup terminar).
+static SCOPED_GUILDS: OnceLock<HashSet<u64>> = OnceLock::new();
+
+/// Esta subida registrou comandos de servidor travados em `guild_id`?
+pub fn has_scoped_commands(guild_id: u64) -> bool {
+    SCOPED_GUILDS
+        .get()
+        .is_some_and(|guilds| guilds.contains(&guild_id))
+}
+
 /// Global quando guildIds esta vazio (o normal: vale em todo servidor,
 /// inclusive nos que o bot entrar depois); por servidor em desenvolvimento.
+///
+/// Os comandos de `scoped` (modulos travados num servidor, como o admin)
+/// NUNCA vao para o registro global nem para o de guildIds: so existem nos
+/// servidores da lista deles. O registro por servidor e uma sobrescrita da
+/// lista inteira, por isso tudo o que vai para um mesmo servidor sai numa
+/// chamada so - duas chamadas seguidas e a segunda apagaria a primeira.
 async fn register_commands(
     ctx: &serenity::Context,
     commands: &[poise::Command<Data, Error>],
     guild_ids: &[u64],
+    scoped: &[modules::GuildScoped],
+    present: &HashSet<u64>,
 ) {
-    if guild_ids.is_empty() {
+    let names: Vec<&str> = commands.iter().map(|c| c.name.as_ref()).collect();
+    let plan = plan_registration(&names, guild_ids, scoped, present);
+    let build = |indexes: &[usize]| -> Vec<serenity::CreateCommand> {
+        indexes
+            .iter()
+            .flat_map(|&i| {
+                poise::builtins::create_application_commands(std::slice::from_ref(&commands[i]))
+            })
+            .collect()
+    };
+
+    for (id, config_key) in &plan.absent {
+        // Servidor fora da lista do READY: o bot nao esta la (ou o id esta
+        // errado). Registrar falharia do mesmo jeito; o aviso diz por que o
+        // comando nao aparece.
+        warn!(
+            "[comandos] aviso: o servidor {id} esta em {config_key} mas o bot nao esta nele; os comandos dele nao foram registrados la."
+        );
+    }
+    let _ = SCOPED_GUILDS.set(plan.scoped_guilds);
+
+    if let Some(global) = &plan.global {
         info!(
             "Registrando comandos globalmente: valem em todo servidor, inclusive nos que o bot entrar depois. Mudanca na definicao de um comando pode levar ate uma hora para propagar."
         );
-        if let Err(cause) = poise::builtins::register_globally(ctx, commands).await {
+        if let Err(cause) = serenity::Command::set_global_commands(ctx, build(global)).await {
             error!("[comandos] falha ao registrar globalmente: {cause}");
         }
-        return;
     }
 
-    for &id in guild_ids {
+    for (id, indexes) in &plan.per_guild {
         info!("Registrando comandos no servidor {id}.");
         // Um servidor sem acesso nao pode derrubar o registro dos outros.
-        if let Err(cause) =
-            poise::builtins::register_in_guild(ctx, commands, serenity::GuildId::new(id)).await
+        if let Err(cause) = serenity::GuildId::new(*id)
+            .set_commands(ctx, build(indexes))
+            .await
         {
             error!("[comandos] falha ao registrar no servidor {id}: {cause}");
         }
     }
+}
+
+/// Onde cada comando vai, por indice em `commands`.
+#[derive(Debug, Default, PartialEq)]
+struct RegistrationPlan {
+    /// Some em modo global (guildIds vazio): os comandos nao travados.
+    global: Option<Vec<usize>>,
+    /// Tudo o que vai para cada servidor, numa sobrescrita so.
+    per_guild: BTreeMap<u64, Vec<usize>>,
+    /// Servidores de um grupo travado onde o bot nao esta, com a chave do
+    /// config.
+    absent: Vec<(u64, &'static str)>,
+    /// Onde comandos travados foram registrados.
+    scoped_guilds: HashSet<u64>,
+}
+
+/// A divisao do registro, pura. Os comandos de `scoped` nunca entram no
+/// global nem no de guildIds; so vao para os servidores da lista deles em que
+/// o bot esta. Id 0 e ignorado (o GuildId do serenity nao aceita zero).
+fn plan_registration(
+    names: &[&str],
+    guild_ids: &[u64],
+    scoped: &[modules::GuildScoped],
+    present: &HashSet<u64>,
+) -> RegistrationPlan {
+    let is_scoped = |name: &str| scoped.iter().any(|g| g.names.iter().any(|n| n == name));
+    let general: Vec<usize> = (0..names.len()).filter(|&i| !is_scoped(names[i])).collect();
+
+    let mut plan = RegistrationPlan::default();
+    if guild_ids.is_empty() {
+        plan.global = Some(general);
+    } else {
+        for &id in guild_ids.iter().filter(|&&id| id != 0) {
+            plan.per_guild
+                .entry(id)
+                .or_default()
+                .extend(general.iter().copied());
+        }
+    }
+
+    for group in scoped {
+        let own: Vec<usize> = (0..names.len())
+            .filter(|&i| group.names.iter().any(|n| n == names[i]))
+            .collect();
+        for &id in group.guild_ids.iter().filter(|&&id| id != 0) {
+            if !present.contains(&id) {
+                plan.absent.push((id, group.config_key));
+                continue;
+            }
+            let list = plan.per_guild.entry(id).or_default();
+            for &i in &own {
+                if !list.contains(&i) {
+                    list.push(i);
+                }
+            }
+            plan.scoped_guilds.insert(id);
+        }
+    }
+    plan
 }
 
 /// Uma linha por mudanca do gateway: transforma "o bot morreu" em hora e
@@ -298,5 +418,49 @@ async fn wait_for_signal() {
     tokio::select! {
         _ = sigint.recv() => {}
         _ = sigterm.recv() => {}
+    }
+}
+
+#[cfg(test)]
+mod registration_tests {
+    use super::*;
+
+    fn admin(guilds: &[u64]) -> Vec<modules::GuildScoped> {
+        vec![modules::GuildScoped {
+            names: vec!["send".into(), "role".into()],
+            guild_ids: guilds.to_vec(),
+            config_key: "admin.guildIds",
+        }]
+    }
+
+    const NAMES: [&str; 4] = ["ban", "send", "play", "role"];
+
+    #[test]
+    fn global_sem_os_travados_e_travados_so_no_servidor_deles() {
+        let present: HashSet<u64> = [7, 8].into();
+        let plan = plan_registration(&NAMES, &[], &admin(&[7, 9, 0]), &present);
+        assert_eq!(plan.global, Some(vec![0, 2]));
+        assert_eq!(plan.per_guild, BTreeMap::from([(7, vec![1, 3])]));
+        assert_eq!(plan.absent, [(9, "admin.guildIds")]);
+        assert_eq!(plan.scoped_guilds, HashSet::from([7]));
+    }
+
+    #[test]
+    fn desenvolvimento_junta_tudo_numa_sobrescrita_por_servidor() {
+        let present: HashSet<u64> = [7, 8].into();
+        let plan = plan_registration(&NAMES, &[7, 8], &admin(&[7]), &present);
+        assert_eq!(plan.global, None);
+        assert_eq!(
+            plan.per_guild,
+            BTreeMap::from([(7, vec![0, 2, 1, 3]), (8, vec![0, 2])])
+        );
+        assert_eq!(plan.scoped_guilds, HashSet::from([7]));
+    }
+
+    #[test]
+    fn lista_vazia_desliga_os_travados() {
+        let plan = plan_registration(&NAMES, &[], &admin(&[]), &HashSet::new());
+        assert_eq!(plan.global, Some(vec![0, 2]));
+        assert!(plan.per_guild.is_empty() && plan.scoped_guilds.is_empty());
     }
 }

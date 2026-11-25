@@ -45,7 +45,7 @@ src/
   process.rs       yt-dlp/ffmpeg/git com prazo (ProcessRunner.cs)
   modules/
     mod.rs         junta commands(), despacha eventos, chama shutdown()
-    moderation/ roblox/ music/ community/ tickets/ ai/
+    moderation/ roblox/ music/ community/ tickets/ ai/ admin/
 ```
 
 ## O que cada modulo expoe
@@ -59,7 +59,10 @@ pub async fn shutdown(data: &Data);
 ```
 
 - `commands()`: o main junta os de todos e registra (global com `guildIds`
-  vazio, por servidor senao - como o RegisterAll).
+  vazio, por servidor senao - como o RegisterAll). Excecao: os grupos de
+  `modules::guild_scoped(config)` (hoje so o admin) nunca entram no registro
+  global nem no de `guildIds`; vao so para os servidores da lista deles (ver
+  "Modulo admin" abaixo).
 - `on_event()`: recebe **todo** evento do gateway; os seis modulos rodam ao
   mesmo tempo para cada evento. Interacao de componente/modal que nao comeca
   com o seu prefixo (`"music:"`, `"verify:"`, `"rp:"`, `"ttt:"`, `"lvl:"`,
@@ -229,3 +232,55 @@ e `Render`), `VerificationService.IsConfigured` e `.CheckAssignableRole`,
 - **ai**: `commands/Ai.cs`, `Services/LocalAi.cs`, `Services/AiGuard.cs`,
   `Services/Ai/AiQuiz.cs`, `AiQuizComponents.cs`, `QuizSchema.cs`. Premio do
   quiz com `data.economy.award`, texto com `store::economy::format`.
+
+## Modulo admin (travado por servidor)
+
+`src/modules/admin/`: as funcoes genericas do painel web do ccore
+(`ccore-rs/src/dashboard/routes.rs`, `jobs.rs` e `src/dm.rs`) como slash
+comandos, sem site. No ccore o portao era a patente; aqui e a permissao do
+Discord mais a hierarquia de cargos.
+
+**Trava.** Como o painel era travado no servidor do regimento, o admin so
+existe nos servidores de `admin.guildIds` no `config.jsonc` (vazio, o padrao,
+desliga em todo lugar):
+
+```jsonc
+"admin": { "guildIds": [1406658194071355415] }
+```
+
+- Registro: `lib.rs` separa os comandos travados (`modules::guild_scoped`) e
+  os registra SO nesses servidores, nunca globalmente. Tudo o que vai para um
+  mesmo servidor sai numa sobrescrita so (com `guildIds` preenchido, os
+  comandos normais e os do admin juntos). Servidor da lista onde o bot nao
+  esta vira um aviso no log e o resto segue.
+- A varredura de comandos de guild da moderacao (`sweeper.rs`) pula esses
+  servidores (`sollarety::has_scoped_commands`): o registro da subida ja
+  sobrescreveu a lista de la, e apagar tudo tiraria o admin.
+- Defesa em profundidade: cada comando e o botao de cancelar conferem
+  `admin.guildIds` de novo na execucao (`gate::ensure`/`guild_allowed`) e
+  recusam em efemero fora da lista. Tirar um servidor da lista vale na hora;
+  para o comando sumir do menu (ou aparecer num servidor novo), reinicie.
+- Canal, cargo, membro e destinatarios da DM vem sempre do servidor onde o
+  comando rodou.
+
+**Comandos** (todos `guild_only`, com `default_member_permissions`,
+`required_permissions` e `required_bot_permissions`; toda acao, e as
+recusas que valem auditar, vao para o canal de log de moderacao via
+`modlog`):
+
+| Comando | Quem | O que faz |
+|---|---|---|
+| `/send channel` | Manage Messages | Modal com ate 4000 caracteres; recusa se quem pede (ou o bot) nao pode ver e escrever no canal de destino (permissoes efetivas la). Divide em partes de 2000 (prefere quebra de linha/espaco). Menciona usuarios; cargo so se mencionavel, ou qualquer um se quem pede tem Mention Everyone no canal; @everyone/@here nunca. Responde em efemero com o link. |
+| `/role add\|remove member role [reason]` | Manage Roles | Recusa @everyone, cargo de integracao, cargo na altura do bot ou acima, cargo na altura de quem pede ou acima, membro na altura de quem pede ou acima (`hierarchy::check`), cargo com Administrator (so o dono) e, ao dar, cargo com permissao que quem pede nao tem. O dono passa por cima das regras de quem pede, nao das do bot. Motivo no audit log via `audit_reason`. |
+| `/role strip member [reason] [notify]` | Manage Roles | O "remover do regimento" generico: lista o que sai e o que fica (com o motivo), confirma por botao (so quem pediu, 60 s), recalcula com o estado de agora, tira um por um e avisa por DM nomeando o servidor (se `notify`, padrao sim). |
+| `/dm user user` | Manage Server | Modal (1024, o teto de campo de embed). So membro deste servidor, nada de bot. O relatorio vem na resposta efemera. |
+| `/dm role role` | Administrator | Modal (1024). Membros com o cargo, sem bots, no maximo 500; um envio por servidor. Mensagem de progresso COMUM no canal (sem ping), editada pelo canal a cada ~10 s - o token da interacao morre em 15 min e 500 DMs levam ~30 min -, com botao Cancel (quem comecou ou um Administrator). No fim o mesmo embed vira o relatorio: cor/titulo pelo desfecho, Target/Total/Sent/Failed/Duration, entregues e falhas agrupadas por motivo, cortadas em 1024 por campo e 6000 no embed. |
+
+A DM e um embed "Message from the staff of <servidor>" com o texto num
+campo; nunca fala em nome de uma pessoa.
+
+**Ritmo** (o do ccore): 3 s entre duas DMs no bot inteiro (`DmLimiter`) mais
+1,2 s de folga entre tentativas; para no primeiro sinal de rate limit
+(429/40003) ou depois de 12 falhas seguidas. Os envios vivem so na memoria:
+no desligamento o `shutdown()` para cada um (ate 5 s) e a mensagem vira o
+relatorio "interrupted".

@@ -131,6 +131,12 @@ async fn sweep_one(
     if !global {
         return SweepResult::Clean;
     }
+    // A excecao: servidor com comandos travados nele (o admin). Ali o
+    // registro da subida ja sobrescreveu a lista de guild - sobra antiga
+    // inclusa -, e apagar tudo tiraria justamente esses comandos.
+    if crate::has_scoped_commands(guild_id.get()) {
+        return SweepResult::Clean;
+    }
 
     let result: Result<Vec<serenity::Command>, serenity::Error> = async {
         // Consulta antes de apagar: o DELETE e barato, mas um por servidor a

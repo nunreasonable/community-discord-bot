@@ -3,6 +3,7 @@
 //! esquecer de registrar um modulo e o jeito mais facil de um comando novo
 //! simplesmente nao aparecer (RegisterAll do C#).
 
+pub mod admin;
 pub mod ai;
 pub mod community;
 pub mod moderation;
@@ -12,9 +13,11 @@ pub mod tickets;
 
 use poise::serenity_prelude as serenity;
 
-use crate::{Data, Error};
+use crate::{Data, Error, config::Config};
 
-/// Todos os comandos, na ordem do RegisterAll do C#.
+/// Todos os comandos, na ordem do RegisterAll do C#. Os do admin entram aqui
+/// tambem - o poise so despacha o que esta nesta lista -, mas o registro no
+/// Discord os separa (ver `guild_scoped`).
 pub fn commands() -> Vec<poise::Command<Data, Error>> {
     let mut all = Vec::new();
     all.extend(moderation::commands());
@@ -23,7 +26,30 @@ pub fn commands() -> Vec<poise::Command<Data, Error>> {
     all.extend(roblox::commands());
     all.extend(music::commands());
     all.extend(ai::commands());
+    all.extend(admin::commands());
     all
+}
+
+/// Comandos que so existem em servidores escolhidos: nunca entram no registro
+/// global nem no de guildIds.
+pub struct GuildScoped {
+    /// Nomes de primeiro nivel, como em `commands()`.
+    pub names: Vec<String>,
+    pub guild_ids: Vec<u64>,
+    /// A chave do config, para o log dizer onde mexer.
+    pub config_key: &'static str,
+}
+
+/// Os grupos travados, com a lista de servidores do config da subida.
+pub fn guild_scoped(config: &Config) -> Vec<GuildScoped> {
+    vec![GuildScoped {
+        names: admin::commands()
+            .into_iter()
+            .map(|c| c.name.into_owned())
+            .collect(),
+        guild_ids: config.admin.guild_ids.clone(),
+        config_key: "admin.guildIds",
+    }]
 }
 
 /// Entrega o evento a todos os modulos, ao mesmo tempo. A falha de um vira
@@ -36,6 +62,7 @@ pub async fn dispatch(ctx: &serenity::Context, event: &serenity::FullEvent, data
         community::on_event(ctx, event, data),
         tickets::on_event(ctx, event, data),
         ai::on_event(ctx, event, data),
+        admin::on_event(ctx, event, data),
     );
 
     let named = [
@@ -45,6 +72,7 @@ pub async fn dispatch(ctx: &serenity::Context, event: &serenity::FullEvent, data
         ("community", results.3),
         ("tickets", results.4),
         ("ai", results.5),
+        ("admin", results.6),
     ];
     for (module, result) in named {
         if let Err(cause) = result {
@@ -56,9 +84,12 @@ pub async fn dispatch(ctx: &serenity::Context, event: &serenity::FullEvent, data
     }
 }
 
-/// Na ordem do C#: o softban em voo, depois a musica, depois o feed.
+/// Na ordem do C#: o softban em voo, depois a musica, depois o feed. O admin
+/// vem logo depois do softban: a DM em massa para e edita a mensagem de
+/// progresso enquanto o gateway e o HTTP ainda estao de pe.
 pub async fn shutdown(data: &Data) {
     moderation::shutdown(data).await;
+    admin::shutdown(data).await;
     music::shutdown(data).await;
     tickets::shutdown(data).await;
     roblox::shutdown(data).await;
