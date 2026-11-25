@@ -32,7 +32,7 @@ pub enum FailKind {
 impl FailKind {
     fn label(self) -> &'static str {
         match self {
-            Self::Closed => "DMs closed or bot blocked",
+            Self::Closed => "DMs off for this server, or bot blocked",
             Self::RateLimited => "Rate limited — stopped here",
             Self::NotFound => "User/member not found",
             Self::Other => "Other errors",
@@ -45,7 +45,10 @@ impl FailKind {
 /// messages too fast"; 10013/10007 = usuario/membro desconhecido.
 pub fn classify(status: Option<u16>, code: Option<isize>) -> FailKind {
     match (status, code) {
-        (_, Some(50007)) | (Some(403), _) => FailKind::Closed,
+        // 50278 ("no mutual guilds") aparece mesmo com a pessoa no servidor:
+        // e o que o Discord responde quando ela desligou as DMs de membros
+        // DAQUELE servidor - o servidor deixa de contar como "em comum".
+        (_, Some(50007 | 50278)) | (Some(403), _) => FailKind::Closed,
         (_, Some(40003)) | (Some(429), _) => FailKind::RateLimited,
         (_, Some(10013 | 10007)) | (Some(404), _) => FailKind::NotFound,
         _ => FailKind::Other,
@@ -441,6 +444,7 @@ mod tests {
         assert_eq!(classify(Some(403), Some(50007)), FailKind::Closed);
         assert_eq!(classify(Some(400), Some(50007)), FailKind::Closed);
         assert_eq!(classify(Some(429), None), FailKind::RateLimited);
+        assert_eq!(classify(Some(400), Some(50278)), FailKind::Closed);
         assert_eq!(classify(Some(400), Some(40003)), FailKind::RateLimited);
         assert_eq!(classify(Some(404), Some(10013)), FailKind::NotFound);
         assert_eq!(classify(Some(400), Some(10007)), FailKind::NotFound);
@@ -525,7 +529,10 @@ mod tests {
             Duration::from_secs(70),
         );
         assert_eq!(field(&r, "Delivered (2)"), Some("user0, user1"));
-        assert_eq!(field(&r, "DMs closed or bot blocked (2)"), Some("a, c"));
+        assert_eq!(
+            field(&r, "DMs off for this server, or bot blocked (2)"),
+            Some("a, c")
+        );
         assert_eq!(field(&r, "Rate limited — stopped here (1)"), Some("d"));
         assert_eq!(field(&r, "Other errors (1)"), Some("b (boom)"));
         assert!(field(&r, "User/member not found").is_none());
@@ -536,7 +543,7 @@ mod tests {
         let names: Vec<&str> = r.fields.iter().map(|(n, _, _)| n.as_str()).collect();
         let closed = names
             .iter()
-            .position(|n| n.starts_with("DMs closed"))
+            .position(|n| n.starts_with("DMs off"))
             .unwrap();
         let other = names.iter().position(|n| n.starts_with("Other")).unwrap();
         assert!(closed < other);
