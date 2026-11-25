@@ -96,6 +96,18 @@
     "admin": {
         "guildIds": [],
 
+        // SO O /dm, POR CARGO: servidores que nao estao em guildIds e usam
+        // apenas o /dm role|user (nada de /send, /role, /deployment). Chave =
+        // id do servidor (texto); roleIds = cargos que podem usar o /dm e o
+        // botao Cancel da DM em massa (o dono e quem tem Administrator sempre
+        // podem; Gerenciar Servidor sozinho nao basta). Ali o /dm aparece no
+        // menu para todos (o Discord nao filtra por cargo) e a conta e feita
+        // na execucao. Servidor que tambem esta em guildIds: valem as regras
+        // de la E os cargos daqui. Tirar um servidor vale na hora; o menu so
+        // acompanha depois de reiniciar. Exemplo:
+        //   "dmGuilds": { "123456789012345678": { "roleIds": [234567890123456789] } }
+        "dmGuilds": {},
+
         // DEPLOYMENT: /deployment posta a convocacao (embed + ping dos cargos +
         // botao Quick Launch) no canal abaixo; /dmdeployment manda o codigo
         // por DM a um cargo ou a uma pessoa. Tudo opcional; ids como numero ou

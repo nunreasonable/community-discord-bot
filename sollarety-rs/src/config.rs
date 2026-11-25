@@ -6,6 +6,7 @@
 //! nao guarde o Arc por muito tempo.
 
 use std::{
+    collections::BTreeMap,
     fmt,
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex},
@@ -304,6 +305,51 @@ pub struct AdminSettings {
     /// /deployment e /dmdeployment (o deployment do ccore).
     #[serde(deserialize_with = "null_default")]
     pub deployment: DeploymentSettings,
+    /// Servidores que usam SO o /dm, liberado por cargo: id do servidor ->
+    /// cargos que podem usar. O dono e Administrator sempre podem.
+    #[serde(deserialize_with = "dm_guilds")]
+    pub dm_guilds: BTreeMap<u64, DmGuild>,
+}
+
+/// Um servidor de admin.dmGuilds.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DmGuild {
+    /// Quem tem um destes cargos usa o /dm (e cancela uma DM em massa).
+    pub role_ids: Vec<u64>,
+}
+
+/// Objeto { "<id do servidor>": { "roleIds": [..] } }. Chave que nao e id,
+/// valor que nao e objeto (null inclusive) e chave desconhecida ficam de
+/// fora; a mesma chave escrita de dois jeitos junta os cargos.
+fn dm_guilds<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<u64, DmGuild>, D::Error> {
+    #[derive(Default, Deserialize)]
+    #[serde(default, rename_all = "camelCase")]
+    struct Entry {
+        #[serde(deserialize_with = "ids")]
+        role_ids: Vec<u64>,
+    }
+    let mut out: BTreeMap<u64, DmGuild> = BTreeMap::new();
+    let Some(serde_json::Value::Object(map)) = Option::<serde_json::Value>::deserialize(d)? else {
+        return Ok(out);
+    };
+    for (key, value) in map {
+        let Some(guild) = key.trim().parse::<u64>().ok().filter(|&id| id != 0) else {
+            continue;
+        };
+        if !value.is_object() {
+            continue;
+        }
+        let Ok(entry) = serde_json::from_value::<Entry>(value) else {
+            continue;
+        };
+        let roles = &mut out.entry(guild).or_default().role_ids;
+        for id in entry.role_ids {
+            if !roles.contains(&id) {
+                roles.push(id);
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// A convocacao para uma partida (o deployment do ccore). Tudo opcional e
@@ -374,6 +420,16 @@ fn text<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
 impl AdminSettings {
     pub fn allows(&self, guild_id: u64) -> bool {
         guild_id != 0 && self.guild_ids.contains(&guild_id)
+    }
+
+    /// O servidor em admin.dmGuilds, com os cargos dele.
+    pub fn dm_guild(&self, guild_id: u64) -> Option<&DmGuild> {
+        self.dm_guilds.get(&guild_id)
+    }
+
+    /// O /dm funciona aqui: servidor do admin ou de admin.dmGuilds.
+    pub fn allows_dm(&self, guild_id: u64) -> bool {
+        self.allows(guild_id) || self.dm_guild(guild_id).is_some()
     }
 }
 
@@ -612,6 +668,52 @@ mod tests {
             .admin
             .deployment;
         assert_eq!(d.default_roles, [77]);
+    }
+
+    #[test]
+    fn dm_guilds_com_chave_de_texto_e_valores_ruins() {
+        let config = Config::parse(
+            r#"{ "admin": { "guildIds": [1], "dmGuilds": {
+                "1575178593556893886": { "roleIds": [1575179034588086392, "7", "x", 0, null] },
+                " 20 ": { "roleIds": "9", "outra": true },
+                "20": { "roleIds": [9, 10] },
+                "30": {},
+                "40": null,
+                "50": [1, 2],
+                "abc": { "roleIds": [1] },
+                "0": { "roleIds": [1] },
+                "60": { "roleIds": { "a": 1 } }
+            } } }"#,
+        )
+        .unwrap();
+        let admin = &config.admin;
+        assert_eq!(
+            admin.dm_guild(1575178593556893886).unwrap().role_ids,
+            [1575179034588086392, 7]
+        );
+        assert_eq!(admin.dm_guild(20).unwrap().role_ids, [9, 10]);
+        // Sem cargos: so o dono e Administrator.
+        assert!(admin.dm_guild(30).unwrap().role_ids.is_empty());
+        assert!(admin.dm_guild(60).unwrap().role_ids.is_empty());
+        for ignored in [40, 50, 0] {
+            assert!(admin.dm_guild(ignored).is_none(), "{ignored}");
+        }
+        assert_eq!(admin.dm_guilds.len(), 4);
+        assert!(admin.allows_dm(1) && admin.allows_dm(20) && !admin.allows_dm(40));
+        // So o /dm: o resto do admin continua so em guildIds.
+        assert!(!admin.allows(20));
+
+        for json in [
+            r#"{ "admin": { "dmGuilds": null } }"#,
+            r#"{ "admin": { "dmGuilds": [1, 2] } }"#,
+            r#"{ "admin": { "dmGuilds": "1" } }"#,
+            r#"{ "admin": {} }"#,
+        ] {
+            assert!(
+                Config::parse(json).unwrap().admin.dm_guilds.is_empty(),
+                "{json}"
+            );
+        }
     }
 
     #[test]

@@ -20,7 +20,8 @@ use poise::{futures_util::StreamExt, serenity_prelude as serenity};
 use tokio::sync::watch;
 
 use super::{
-    gate, modal,
+    gate::{self, DmAccess, DmCommand},
+    modal,
     report::{self, FailKind, Failure, Outcome, Tally},
 };
 use crate::{Context, Data, Error, embeds, hierarchy, modlog};
@@ -170,14 +171,32 @@ impl Jobs {
 
 static JOBS: LazyLock<Jobs> = LazyLock::new(Jobs::default);
 
-/// Quem pode cancelar: quem comecou, ou um Administrator do servidor.
-fn may_cancel(starter: u64, presser: u64, presser_is_admin: bool) -> bool {
-    presser == starter || presser_is_admin
+/// Qual trava um envio confere de novo antes de sair: a do admin
+/// (/dmdeployment) ou a do /dm, que tambem aceita admin.dmGuilds e confere
+/// a permissao com o config de agora.
+#[derive(Clone, Copy)]
+pub(super) enum Lock {
+    Admin,
+    Dm(DmCommand),
+}
+
+impl Lock {
+    async fn open(self, ctx: Context<'_>, guild_id: serenity::GuildId) -> Result<bool, Error> {
+        match self {
+            Self::Admin => Ok(gate::guild_allowed(Some(guild_id))),
+            Self::Dm(which) => gate::dm_still_allowed(ctx, which).await,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Comandos
 // ---------------------------------------------------------------------------
+
+// A permissao do /dm nao e `required_permissions`: em admin.dmGuilds quem
+// usa e quem tem um cargo, e o Discord nao filtra por cargo. A conta e feita
+// na execucao (`gate::ensure_dm`). O menu: Gerenciar Servidor nos servidores
+// do admin; aberto a todos onde o /dm vale por cargo (`open_menu`).
 
 /// Sends a DM from the server's staff
 #[poise::command(
@@ -185,7 +204,6 @@ fn may_cancel(starter: u64, presser: u64, presser_is_admin: bool) -> bool {
     rename = "dm",
     guild_only,
     default_member_permissions = "MANAGE_GUILD",
-    required_permissions = "MANAGE_GUILD",
     subcommand_required,
     subcommands("role", "user")
 )]
@@ -193,18 +211,25 @@ pub async fn dm_group(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// O /dm para os servidores de admin.dmGuilds: sem default_member_permissions
+/// (todos veem no menu; quem pode e conferido na execucao).
+pub(super) fn dm_group_open_menu() -> poise::Command<Data, Error> {
+    let mut command = dm_group();
+    command.default_member_permissions = serenity::Permissions::empty();
+    command
+}
+
 /// DMs every member with a role (not bots)
 #[poise::command(
     slash_command,
     guild_only,
-    required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "VIEW_CHANNEL | SEND_MESSAGES | EMBED_LINKS"
 )]
 async fn role(
     ctx: Context<'_>,
     #[description = "Everyone with this role gets the DM"] role: serenity::Role,
 ) -> Result<(), Error> {
-    if !gate::ensure(ctx).await? {
+    if !gate::ensure_dm(ctx, DmCommand::Role).await? {
         return Ok(());
     }
     let guild_id = ctx
@@ -228,19 +253,20 @@ async fn role(
             return modal::finish(ctx.http(), &submit, embed).await;
         }
         let payload = staff_payload(ctx, guild_id, &text);
-        start_role_job(ctx, Reply::Modal(&submit), guild_id, role_id, payload).await
+        let lock = Lock::Dm(DmCommand::Role);
+        start_role_job(ctx, Reply::Modal(&submit), lock, guild_id, role_id, payload).await
     })
     .await;
     Ok(())
 }
 
 /// DMs one member of this server
-#[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
+#[poise::command(slash_command, guild_only)]
 async fn user(
     ctx: Context<'_>,
     #[description = "Who gets the DM (must be in this server)"] user: serenity::User,
 ) -> Result<(), Error> {
-    if !gate::ensure(ctx).await? {
+    if !gate::ensure_dm(ctx, DmCommand::User).await? {
         return Ok(());
     }
     let guild_id = ctx
@@ -261,7 +287,8 @@ async fn user(
             return modal::finish(ctx.http(), &submit, embed).await;
         }
         let payload = staff_payload(ctx, guild_id, &text);
-        send_single(ctx, Reply::Modal(&submit), guild_id, &user, payload).await
+        let lock = Lock::Dm(DmCommand::User);
+        send_single(ctx, Reply::Modal(&submit), lock, guild_id, &user, payload).await
     })
     .await;
     Ok(())
@@ -475,12 +502,13 @@ fn check_count(count: usize, role_id: u64) -> Result<(), String> {
 pub(super) async fn start_role_job(
     ctx: Context<'_>,
     reply: Reply<'_>,
+    lock: Lock,
     guild_id: serenity::GuildId,
     role_id: serenity::RoleId,
     payload: Payload,
 ) -> Result<(), Error> {
     // A trava de novo: o config pode ter mudado com o modal aberto.
-    if !gate::guild_allowed(Some(guild_id)) {
+    if !lock.open(ctx, guild_id).await? {
         return reply.show(ctx, gate::locked_embed()).await;
     }
     if JOBS.running(guild_id.get()) {
@@ -596,11 +624,12 @@ pub(super) async fn start_role_job(
 pub(super) async fn send_single(
     ctx: Context<'_>,
     reply: Reply<'_>,
+    lock: Lock,
     guild_id: serenity::GuildId,
     user: &serenity::User,
     payload: Payload,
 ) -> Result<(), Error> {
-    if !gate::guild_allowed(Some(guild_id)) {
+    if !lock.open(ctx, guild_id).await? {
         return reply.show(ctx, gate::locked_embed()).await;
     }
     let name = match hierarchy::try_get_member(ctx, guild_id, user.id).await? {
@@ -914,10 +943,10 @@ async fn cancel_pressed(
                 .ephemeral(true),
         )
     };
-    let Some(guild_id) = press
-        .guild_id
-        .filter(|_| gate::guild_allowed(press.guild_id))
-    else {
+    // A trava do /dm (admin.guildIds ou admin.dmGuilds), com o config de
+    // agora: o botao serve aos dois tipos de envio.
+    let access = DmAccess::current(press.guild_id);
+    let Some(guild_id) = press.guild_id.filter(|_| access.enabled()) else {
         press
             .create_response(ctx, reply(gate::locked_embed()))
             .await?;
@@ -942,15 +971,19 @@ async fn cancel_pressed(
         .as_ref()
         .and_then(|m| m.permissions)
         .is_some_and(|p| p.administrator());
-    if !may_cancel(job.starter, press.user.id.get(), is_admin) {
+    let roles: Vec<u64> = press
+        .member
+        .as_ref()
+        .map(|m| m.roles.iter().map(|r| r.get()).collect())
+        .unwrap_or_default();
+    if !gate::may_cancel(&access, job.starter, press.user.id.get(), is_admin, &roles) {
+        let who = if access.dm_roles.as_ref().is_some_and(|r| !r.is_empty()) {
+            "Only the person who started this, an Administrator or a member with one of the allowed roles can cancel it."
+        } else {
+            "Only the person who started this or an Administrator can cancel it."
+        };
         press
-            .create_response(
-                ctx,
-                reply(embeds::error(
-                    "Not allowed",
-                    "Only the person who started this or an Administrator can cancel it.",
-                )),
-            )
+            .create_response(ctx, reply(embeds::error("Not allowed", who)))
             .await?;
         return Ok(());
     }
@@ -1045,13 +1078,6 @@ mod tests {
         assert_eq!(jobs.stop_all(), 2);
         assert_eq!(*a.stop.borrow(), Some(Stop::Cancelled { by: 5 }));
         assert_eq!(*b.stop.borrow(), Some(Stop::Shutdown));
-    }
-
-    #[test]
-    fn quem_pode_cancelar() {
-        assert!(may_cancel(10, 10, false));
-        assert!(may_cancel(10, 11, true));
-        assert!(!may_cancel(10, 11, false));
     }
 
     #[test]

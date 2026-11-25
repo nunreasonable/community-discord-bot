@@ -19,7 +19,7 @@ pub mod scope;
 pub mod store;
 
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     io::IsTerminal,
     sync::{Arc, OnceLock},
     time::Duration,
@@ -271,11 +271,22 @@ async fn register_commands(
 ) {
     let names: Vec<&str> = commands.iter().map(|c| c.name.as_ref()).collect();
     let plan = plan_registration(&names, guild_ids, scoped, present);
-    let build = |indexes: &[usize]| -> Vec<serenity::CreateCommand> {
+    let build = |guild: Option<u64>, indexes: &[usize]| -> Vec<serenity::CreateCommand> {
         indexes
             .iter()
             .flat_map(|&i| {
-                poise::builtins::create_application_commands(std::slice::from_ref(&commands[i]))
+                let wants_open = guild.is_some_and(|id| plan.open_menu.contains(&(id, i)));
+                let open = wants_open
+                    .then(|| modules::open_menu(&commands[i].name))
+                    .flatten();
+                if wants_open && open.is_none() {
+                    warn!(
+                        "[comandos] aviso: /{} nao tem versao de menu aberto; vai com a permissao padrao.",
+                        commands[i].name
+                    );
+                }
+                let command = open.as_ref().unwrap_or(&commands[i]);
+                poise::builtins::create_application_commands(std::slice::from_ref(command))
             })
             .collect()
     };
@@ -288,13 +299,13 @@ async fn register_commands(
             "[comandos] aviso: o servidor {id} esta em {config_key} mas o bot nao esta nele; os comandos dele nao foram registrados la."
         );
     }
-    let _ = SCOPED_GUILDS.set(plan.scoped_guilds);
+    let _ = SCOPED_GUILDS.set(plan.scoped_guilds.clone());
 
     if let Some(global) = &plan.global {
         info!(
             "Registrando comandos globalmente: valem em todo servidor, inclusive nos que o bot entrar depois. Mudanca na definicao de um comando pode levar ate uma hora para propagar."
         );
-        if let Err(cause) = serenity::Command::set_global_commands(ctx, build(global)).await {
+        if let Err(cause) = serenity::Command::set_global_commands(ctx, build(None, global)).await {
             error!("[comandos] falha ao registrar globalmente: {cause}");
         }
     }
@@ -303,7 +314,7 @@ async fn register_commands(
         info!("Registrando comandos no servidor {id}.");
         // Um servidor sem acesso nao pode derrubar o registro dos outros.
         if let Err(cause) = serenity::GuildId::new(*id)
-            .set_commands(ctx, build(indexes))
+            .set_commands(ctx, build(Some(*id), indexes))
             .await
         {
             error!("[comandos] falha ao registrar no servidor {id}: {cause}");
@@ -323,6 +334,10 @@ struct RegistrationPlan {
     absent: Vec<(u64, &'static str)>,
     /// Onde comandos travados foram registrados.
     scoped_guilds: HashSet<u64>,
+    /// (servidor, indice) que vai sem default_member_permissions: um grupo
+    /// `open_menu` o levou para la. Ganha de um grupo comum no mesmo
+    /// servidor - quem tem so o cargo precisa ver o comando.
+    open_menu: BTreeSet<(u64, usize)>,
 }
 
 /// A divisao do registro, pura. Os comandos de `scoped` nunca entram no
@@ -362,6 +377,9 @@ fn plan_registration(
             for &i in &own {
                 if !list.contains(&i) {
                     list.push(i);
+                }
+                if group.open_menu {
+                    plan.open_menu.insert((id, i));
                 }
             }
             plan.scoped_guilds.insert(id);
@@ -426,14 +444,28 @@ mod registration_tests {
     use super::*;
 
     fn admin(guilds: &[u64]) -> Vec<modules::GuildScoped> {
-        vec![modules::GuildScoped {
-            names: vec!["send".into(), "role".into()],
-            guild_ids: guilds.to_vec(),
-            config_key: "admin.guildIds",
-        }]
+        admin_and_dm(guilds, &[])
+    }
+
+    fn admin_and_dm(admin: &[u64], dm: &[u64]) -> Vec<modules::GuildScoped> {
+        vec![
+            modules::GuildScoped {
+                names: vec!["send".into(), "role".into(), "dm".into()],
+                guild_ids: admin.to_vec(),
+                config_key: "admin.guildIds",
+                open_menu: false,
+            },
+            modules::GuildScoped {
+                names: vec!["dm".into()],
+                guild_ids: dm.to_vec(),
+                config_key: "admin.dmGuilds",
+                open_menu: true,
+            },
+        ]
     }
 
     const NAMES: [&str; 4] = ["ban", "send", "play", "role"];
+    const WITH_DM: [&str; 5] = ["ban", "send", "play", "role", "dm"];
 
     #[test]
     fn global_sem_os_travados_e_travados_so_no_servidor_deles() {
@@ -455,6 +487,38 @@ mod registration_tests {
             BTreeMap::from([(7, vec![0, 2, 1, 3]), (8, vec![0, 2])])
         );
         assert_eq!(plan.scoped_guilds, HashSet::from([7]));
+    }
+
+    #[test]
+    fn servidor_so_do_dm_recebe_so_o_dm_com_menu_aberto() {
+        let present: HashSet<u64> = [7, 8, 9].into();
+        let plan = plan_registration(&WITH_DM, &[], &admin_and_dm(&[7], &[8, 6]), &present);
+        assert_eq!(plan.global, Some(vec![0, 2]));
+        // O servidor do admin nao muda: tudo, com a permissao de sempre.
+        assert_eq!(
+            plan.per_guild,
+            BTreeMap::from([(7, vec![1, 3, 4]), (8, vec![4])])
+        );
+        assert_eq!(plan.open_menu, BTreeSet::from([(8, 4)]));
+        // O que o bot nao esta vira aviso; o sweeper pula os dois.
+        assert_eq!(plan.absent, [(6, "admin.dmGuilds")]);
+        assert_eq!(plan.scoped_guilds, HashSet::from([7, 8]));
+    }
+
+    #[test]
+    fn servidor_nas_duas_listas_tem_tudo_e_o_dm_aberto() {
+        let present: HashSet<u64> = [7].into();
+        let plan = plan_registration(&WITH_DM, &[], &admin_and_dm(&[7], &[7]), &present);
+        assert_eq!(plan.per_guild, BTreeMap::from([(7, vec![1, 3, 4])]));
+        assert_eq!(plan.open_menu, BTreeSet::from([(7, 4)]));
+        assert_eq!(plan.scoped_guilds, HashSet::from([7]));
+
+        // Em desenvolvimento, o servidor so do dm leva os comandos normais
+        // mais o dm, numa sobrescrita so.
+        let present: HashSet<u64> = [8].into();
+        let plan = plan_registration(&WITH_DM, &[8], &admin_and_dm(&[], &[8]), &present);
+        assert_eq!(plan.per_guild, BTreeMap::from([(8, vec![0, 2, 4])]));
+        assert_eq!(plan.open_menu, BTreeSet::from([(8, 4)]));
     }
 
     #[test]

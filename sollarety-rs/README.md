@@ -60,7 +60,7 @@ pub async fn shutdown(data: &Data);
 
 - `commands()`: o main junta os de todos e registra (global com `guildIds`
   vazio, por servidor senao - como o RegisterAll). Excecao: os grupos de
-  `modules::guild_scoped(config)` (hoje so o admin) nunca entram no registro
+  `modules::guild_scoped(config)` (hoje o admin e o /dm de `admin.dmGuilds`) nunca entram no registro
   global nem no de `guildIds`; vao so para os servidores da lista deles (ver
   "Modulo admin" abaixo).
 - `on_event()`: recebe **todo** evento do gateway; os seis modulos rodam ao
@@ -263,8 +263,42 @@ desliga em todo lugar):
 - Canal, cargo, membro e destinatarios da DM vem sempre do servidor onde o
   comando rodou.
 
+**Servidores so do /dm** (`admin.dmGuilds`). Um servidor fora de
+`admin.guildIds` pode usar APENAS o `/dm role|user`, liberado por cargo:
+
+```jsonc
+"admin": {
+    "guildIds": [1406658194071355415],
+    "dmGuilds": {
+        "1575178593556893886": { "roleIds": [1575179034588086392] }
+    }
+}
+```
+
+- Chave = id do servidor (texto, como toda chave de objeto JSON); `roleIds`
+  aceita numeros ou textos. Chave que nao e id, valor que nao e objeto
+  (`null` inclusive) e chave desconhecida sao ignorados; `{}` sem cargos
+  deixa so o dono e Administrator.
+- Registro: so o `/dm` vai para la, SEM `default_member_permissions` (todos
+  veem no menu; o Discord nao filtra por cargo), como o `deploy.rs` faz com
+  `allowedRoleIds`. Servidor onde o bot nao esta vira aviso no log; o
+  sweeper pula esses servidores como pula os do admin.
+- Quem pode (`gate::ensure_dm`/`may_dm`, conferido na execucao com o config
+  de agora, antes do modal e de novo depois dele): o dono, Administrator ou
+  quem tem um dos `roleIds` - nos dois subcomandos. O botao Cancel: quem
+  comecou, Administrator ou quem tem um dos `roleIds`.
+- Servidor nas duas listas: todos os comandos do admin com as regras de
+  sempre, e o `/dm` aceita tambem os cargos (uniao); por isso ali o `/dm`
+  vai com o menu aberto.
+- O resto e o mesmo `/dm`: um envio por servidor, ritmo, tetos, progresso
+  editado pelo canal, relatorio final, modlog do proprio servidor,
+  destinatarios so desse servidor e a DM nomeando o servidor.
+- Tirar um servidor de `dmGuilds` vale na hora (comando e botao recusam);
+  o menu so some depois de reiniciar.
+
 **Comandos** (todos `guild_only`, com `default_member_permissions`,
-`required_permissions` e `required_bot_permissions`; toda acao, e as
+`required_permissions` (o `/dm` confere na execucao) e
+`required_bot_permissions`; toda acao, e as
 recusas que valem auditar, vao para o canal de log de moderacao via
 `modlog`):
 
@@ -273,8 +307,8 @@ recusas que valem auditar, vao para o canal de log de moderacao via
 | `/send channel` | Manage Messages | Modal com ate 4000 caracteres; recusa se quem pede (ou o bot) nao pode ver e escrever no canal de destino (permissoes efetivas la). Divide em partes de 2000 (prefere quebra de linha/espaco). Menciona usuarios; cargo so se mencionavel, ou qualquer um se quem pede tem Mention Everyone no canal; @everyone/@here nunca. Responde em efemero com o link. |
 | `/role add\|remove member role [reason]` | Manage Roles | Recusa @everyone, cargo de integracao, cargo na altura do bot ou acima, cargo na altura de quem pede ou acima, membro na altura de quem pede ou acima (`hierarchy::check`), cargo com Administrator (so o dono) e, ao dar, cargo com permissao que quem pede nao tem. O dono passa por cima das regras de quem pede, nao das do bot. Motivo no audit log via `audit_reason`. |
 | `/role strip member [reason] [notify]` | Manage Roles | O "remover do regimento" generico: lista o que sai e o que fica (com o motivo), confirma por botao (so quem pediu, 60 s), recalcula com o estado de agora, tira um por um e avisa por DM nomeando o servidor (se `notify`, padrao sim). |
-| `/dm user user` | Manage Server | Modal (1024, o teto de campo de embed). So membro deste servidor, nada de bot. O relatorio vem na resposta efemera. |
-| `/dm role role` | Administrator | Modal (1024). Membros com o cargo, sem bots, no maximo 500; um envio por servidor. Mensagem de progresso COMUM no canal (sem ping), editada pelo canal a cada ~10 s - o token da interacao morre em 15 min e 500 DMs levam ~30 min -, com botao Cancel (quem comecou ou um Administrator). No fim o mesmo embed vira o relatorio: cor/titulo pelo desfecho, Target/Total/Sent/Failed/Duration, entregues e falhas agrupadas por motivo, cortadas em 1024 por campo e 6000 no embed. |
+| `/dm user user` | Manage Server (conferido na execucao; em `dmGuilds`, os cargos de la) | Modal (1024, o teto de campo de embed). So membro deste servidor, nada de bot. O relatorio vem na resposta efemera. |
+| `/dm role role` | Administrator (conferido na execucao; em `dmGuilds`, os cargos de la) | Modal (1024). Membros com o cargo, sem bots, no maximo 500; um envio por servidor. Mensagem de progresso COMUM no canal (sem ping), editada pelo canal a cada ~10 s - o token da interacao morre em 15 min e 500 DMs levam ~30 min -, com botao Cancel (quem comecou, um Administrator ou, em `dmGuilds`, quem tem um dos cargos). No fim o mesmo embed vira o relatorio: cor/titulo pelo desfecho, Target/Total/Sent/Failed/Duration, entregues e falhas agrupadas por motivo, cortadas em 1024 por campo e 6000 no embed. |
 
 A DM do `/dm` e um embed "Message from the staff of <servidor>" com o texto num
 campo; nunca fala em nome de uma pessoa.

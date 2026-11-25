@@ -38,18 +38,36 @@ pub struct GuildScoped {
     pub guild_ids: Vec<u64>,
     /// A chave do config, para o log dizer onde mexer.
     pub config_key: &'static str,
+    /// Nestes servidores os comandos vao sem default_member_permissions
+    /// (`open_menu`): quem pode e conferido na execucao, por cargo.
+    pub open_menu: bool,
 }
 
-/// Os grupos travados, com a lista de servidores do config da subida.
+/// Os grupos travados, com a lista de servidores do config da subida: o
+/// admin inteiro em admin.guildIds e so o /dm em admin.dmGuilds.
 pub fn guild_scoped(config: &Config) -> Vec<GuildScoped> {
-    vec![GuildScoped {
-        names: admin::commands()
-            .into_iter()
-            .map(|c| c.name.into_owned())
-            .collect(),
-        guild_ids: config.admin.guild_ids.clone(),
-        config_key: "admin.guildIds",
-    }]
+    vec![
+        GuildScoped {
+            names: admin::commands()
+                .into_iter()
+                .map(|c| c.name.into_owned())
+                .collect(),
+            guild_ids: config.admin.guild_ids.clone(),
+            config_key: "admin.guildIds",
+            open_menu: false,
+        },
+        GuildScoped {
+            names: admin::DM_ONLY.iter().map(|&n| n.to_owned()).collect(),
+            guild_ids: config.admin.dm_guilds.keys().copied().collect(),
+            config_key: "admin.dmGuilds",
+            open_menu: true,
+        },
+    ]
+}
+
+/// O comando sem default_member_permissions, para um grupo `open_menu`.
+pub fn open_menu(name: &str) -> Option<poise::Command<Data, Error>> {
+    admin::open_menu(name)
 }
 
 /// Entrega o evento a todos os modulos, ao mesmo tempo. A falha de um vira

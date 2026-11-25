@@ -541,10 +541,7 @@ mod tests {
         assert!(r.description.contains("4 member(s) were never attempted."));
         // A ordem dos grupos e fixa.
         let names: Vec<&str> = r.fields.iter().map(|(n, _, _)| n.as_str()).collect();
-        let closed = names
-            .iter()
-            .position(|n| n.starts_with("DMs off"))
-            .unwrap();
+        let closed = names.iter().position(|n| n.starts_with("DMs off")).unwrap();
         let other = names.iter().position(|n| n.starts_with("Other")).unwrap();
         assert!(closed < other);
     }

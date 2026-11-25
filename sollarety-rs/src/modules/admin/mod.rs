@@ -19,6 +19,10 @@
 //! confere a lista de novo na execucao (`gate::ensure`). No ccore o portao
 //! era a patente; aqui e a permissao do proprio Discord mais a hierarquia.
 //!
+//! Excecao: os servidores de `admin.dmGuilds` recebem SO o /dm, liberado por
+//! cargo (`gate::ensure_dm`). Ali o /dm vai sem default_member_permissions
+//! (`open_menu`), porque o Discord nao filtra o menu por cargo.
+//!
 //! Estado proprio (envios em andamento, o limitador de DM) mora em `static`s
 //! do dm.rs.
 
@@ -42,6 +46,15 @@ pub fn commands() -> Vec<poise::Command<Data, Error>> {
     all.into_iter().map(scope::guild_only).collect()
 }
 
+/// Nomes dos comandos que admin.dmGuilds recebe.
+pub const DM_ONLY: &[&str] = &["dm"];
+
+/// A versao "menu aberto" de um comando do modulo, para os servidores onde
+/// ele vale por cargo. None para os que nao tem essa versao.
+pub fn open_menu(name: &str) -> Option<poise::Command<Data, Error>> {
+    (name == "dm").then(|| scope::guild_only(dm::dm_group_open_menu()))
+}
+
 /// So o botao de cancelar da DM em massa chega por aqui: os outros botoes e
 /// modais do modulo sao lidos pelos coletores dentro dos proprios comandos.
 pub async fn on_event(
@@ -59,4 +72,29 @@ pub async fn on_event(
 /// vira o relatorio dizendo que o bot desligou.
 pub async fn shutdown(_data: &Data) {
     dm::shutdown().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dm_aberto_so_para_o_dm() {
+        assert_eq!(DM_ONLY, [dm::dm_group().name.as_ref()]);
+        // A versao dos servidores por cargo vai sem permissao padrao (todos
+        // veem); a dos servidores do admin continua em Gerenciar Servidor.
+        let open = open_menu("dm").unwrap();
+        assert!(open.default_member_permissions.is_empty());
+        assert_eq!(open.subcommands.len(), 2);
+        assert!(dm::dm_group().default_member_permissions.manage_guild());
+        // Sem required_permissions: a conta e feita na execucao.
+        assert!(dm::dm_group().required_permissions.is_empty());
+        assert!(
+            dm::dm_group()
+                .subcommands
+                .iter()
+                .all(|c| c.required_permissions.is_empty())
+        );
+        assert!(open_menu("send").is_none());
+    }
 }

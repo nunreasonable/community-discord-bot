@@ -663,7 +663,15 @@ async fn dm_role(
         return gate::respond(ctx, refusal).await;
     }
     let payload = payload(ctx, &begun, &role.name, message.as_deref());
-    dm::start_role_job(ctx, Reply::Command, begun.guild_id, role.id, payload).await
+    dm::start_role_job(
+        ctx,
+        Reply::Command,
+        dm::Lock::Admin,
+        begun.guild_id,
+        role.id,
+        payload,
+    )
+    .await
 }
 
 /// DMs the deployment code to one member of this server
@@ -685,7 +693,15 @@ async fn dm_user(
         return gate::respond(ctx, refusal).await;
     }
     let payload = payload(ctx, &begun, user.display_name(), message.as_deref());
-    dm::send_single(ctx, Reply::Command, begun.guild_id, &user, payload).await
+    dm::send_single(
+        ctx,
+        Reply::Command,
+        dm::Lock::Admin,
+        begun.guild_id,
+        &user,
+        payload,
+    )
+    .await
 }
 
 fn payload(ctx: Context<'_>, begun: &Begun, target: &str, message: Option<&str>) -> Payload {

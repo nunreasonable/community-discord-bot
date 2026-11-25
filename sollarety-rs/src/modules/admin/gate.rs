@@ -47,6 +47,163 @@ pub async fn ensure(ctx: Context<'_>) -> Result<bool, Error> {
 }
 
 // ---------------------------------------------------------------------------
+// Trava e regra do /dm (admin.guildIds e admin.dmGuilds)
+// ---------------------------------------------------------------------------
+
+/// Onde o /dm funciona e por que, tirado do config de AGORA.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DmAccess {
+    /// O servidor esta em admin.guildIds: valem as regras de sempre.
+    pub admin_guild: bool,
+    /// Os cargos de admin.dmGuilds, quando o servidor esta la.
+    pub dm_roles: Option<Vec<u64>>,
+}
+
+impl DmAccess {
+    pub fn of(admin: &config::AdminSettings, guild_id: u64) -> Self {
+        Self {
+            admin_guild: admin.allows(guild_id),
+            dm_roles: admin.dm_guild(guild_id).map(|g| g.role_ids.clone()),
+        }
+    }
+
+    pub fn current(guild_id: Option<serenity::GuildId>) -> Self {
+        guild_id.map_or_else(Self::default, |g| {
+            Self::of(&config::current().admin, g.get())
+        })
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.admin_guild || self.dm_roles.is_some()
+    }
+
+    /// Tem um dos cargos de admin.dmGuilds deste servidor.
+    pub fn has_role(&self, member_roles: &[u64]) -> bool {
+        self.dm_roles
+            .as_ref()
+            .is_some_and(|allowed| member_roles.iter().any(|r| allowed.contains(r)))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DmCommand {
+    Role,
+    User,
+}
+
+/// Quem pode usar o /dm. Fora das duas listas, ninguem. O dono e
+/// Administrator sempre. Em admin.guildIds, as regras de sempre (/dm role
+/// pede Administrator, /dm user pede Gerenciar Servidor); em admin.dmGuilds,
+/// quem tem um dos cargos de la. Nas duas listas, vale qualquer um dos dois.
+pub fn may_dm(
+    access: &DmAccess,
+    which: DmCommand,
+    is_owner: bool,
+    permissions: serenity::Permissions,
+    member_roles: &[u64],
+) -> bool {
+    if !access.enabled() {
+        return false;
+    }
+    if is_owner || permissions.administrator() {
+        return true;
+    }
+    if access.admin_guild && which == DmCommand::User && permissions.manage_guild() {
+        return true;
+    }
+    access.has_role(member_roles)
+}
+
+/// Quem pode cancelar uma DM em massa: quem comecou, um Administrator ou,
+/// num servidor de admin.dmGuilds, quem tem um dos cargos de la.
+pub fn may_cancel(
+    access: &DmAccess,
+    starter: u64,
+    presser: u64,
+    presser_is_admin: bool,
+    presser_roles: &[u64],
+) -> bool {
+    presser == starter || presser_is_admin || access.has_role(presser_roles)
+}
+
+/// Cargos listados na recusa; o resto vira "...".
+const MAX_LISTED_ROLES: usize = 15;
+
+/// A recusa do /dm, dizendo o que falta.
+pub fn dm_denied(access: &DmAccess, which: DmCommand) -> serenity::CreateEmbed {
+    let mut ways = vec!["be the server owner or have Administrator".to_owned()];
+    if access.admin_guild && which == DmCommand::User {
+        ways.push("have Manage Server".to_owned());
+    }
+    if let Some(roles) = access.dm_roles.as_ref().filter(|r| !r.is_empty()) {
+        let mut listed: Vec<String> = roles
+            .iter()
+            .take(MAX_LISTED_ROLES)
+            .map(|id| format!("<@&{id}>"))
+            .collect();
+        if roles.len() > MAX_LISTED_ROLES {
+            listed.push("...".to_owned());
+        }
+        ways.push(format!("have one of these roles: {}", listed.join(", ")));
+    }
+    let how = match ways.as_slice() {
+        [only] => only.clone(),
+        [rest @ .., last] => format!("{}, or {last}", rest.join(", ")),
+        [] => unreachable!(),
+    };
+    embeds::error("Not allowed", format!("To use this you need to {how}."))
+}
+
+/// Primeira linha do /dm: trava (admin.guildIds ou admin.dmGuilds) e
+/// permissao, os dois com o config de agora. false quando ja respondeu com a
+/// recusa em efemero. Vem antes de qualquer defer ou modal.
+pub async fn ensure_dm(ctx: Context<'_>, which: DmCommand) -> Result<bool, Error> {
+    let access = DmAccess::current(ctx.guild_id());
+    let refusal = if access.enabled() {
+        (!dm_authorized(ctx, &access, which).await?).then(|| dm_denied(&access, which))
+    } else {
+        Some(locked_embed())
+    };
+    let Some(embed) = refusal else {
+        return Ok(true);
+    };
+    tracing::warn!(
+        "[admin] /{} de {} recusado no servidor {} (trava ou permissao do /dm)",
+        ctx.command().qualified_name,
+        ctx.author().id,
+        ctx.guild_id()
+            .map_or("(nenhum)".to_owned(), |g| g.to_string())
+    );
+    ctx.send(CreateReply::default().embed(embed).ephemeral(true))
+        .await?;
+    Ok(false)
+}
+
+/// Confere de novo (o config pode ter mudado com o modal aberto). True
+/// quando ainda pode.
+pub async fn dm_still_allowed(ctx: Context<'_>, which: DmCommand) -> Result<bool, Error> {
+    let access = DmAccess::current(ctx.guild_id());
+    Ok(access.enabled() && dm_authorized(ctx, &access, which).await?)
+}
+
+async fn dm_authorized(
+    ctx: Context<'_>,
+    access: &DmAccess,
+    which: DmCommand,
+) -> Result<bool, Error> {
+    let actor = actor(ctx).await?;
+    let roles: Vec<u64> = actor.roles.iter().map(|r| r.get()).collect();
+    let guild = ctx.guild().ok_or("servidor fora do cache")?;
+    Ok(may_dm(
+        access,
+        which,
+        guild.owner_id == actor.user.id,
+        guild.member_permissions(&actor),
+        &roles,
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // Pecas de Discord
 // ---------------------------------------------------------------------------
 
@@ -468,6 +625,88 @@ mod tests {
         ));
         assert!(!can_post(P::VIEW_CHANNEL));
         assert!(!can_post(P::SEND_MESSAGES));
+    }
+
+    fn access(admin_guild: bool, dm_roles: Option<&[u64]>) -> DmAccess {
+        DmAccess {
+            admin_guild,
+            dm_roles: dm_roles.map(<[u64]>::to_vec),
+        }
+    }
+
+    #[test]
+    fn dm_le_as_duas_listas() {
+        let admin = config::Config::parse(
+            r#"{ "admin": { "guildIds": [1, 3], "dmGuilds": { "2": { "roleIds": [9] }, "3": {} } } }"#,
+        )
+        .unwrap()
+        .admin;
+        assert_eq!(DmAccess::of(&admin, 1), access(true, None));
+        assert_eq!(DmAccess::of(&admin, 2), access(false, Some(&[9])));
+        assert_eq!(DmAccess::of(&admin, 3), access(true, Some(&[])));
+        assert!(!DmAccess::of(&admin, 4).enabled());
+    }
+
+    #[test]
+    fn quem_pode_usar_o_dm() {
+        use DmCommand::{Role, User};
+        let none = P::empty();
+        let roles = [9, 5];
+        let dm_only = access(false, Some(&[9]));
+        // Servidor so do /dm: dono, Administrator ou o cargo, nos dois.
+        for which in [Role, User] {
+            assert!(may_dm(&dm_only, which, true, none, &[]));
+            assert!(may_dm(&dm_only, which, false, P::ADMINISTRATOR, &[]));
+            assert!(may_dm(&dm_only, which, false, none, &roles));
+            assert!(!may_dm(&dm_only, which, false, none, &[5]));
+            // Gerenciar Servidor sozinho nao basta ali.
+            assert!(!may_dm(&dm_only, which, false, P::MANAGE_GUILD, &[5]));
+        }
+        // Servidor do admin: as regras de sempre, e o cargo nao vale.
+        let admin = access(true, None);
+        assert!(may_dm(&admin, User, false, P::MANAGE_GUILD, &[]));
+        assert!(!may_dm(&admin, Role, false, P::MANAGE_GUILD, &[]));
+        assert!(may_dm(&admin, Role, false, P::ADMINISTRATOR, &[]));
+        assert!(!may_dm(&admin, User, false, none, &roles));
+        // Nas duas: a uniao.
+        let both = access(true, Some(&[9]));
+        assert!(may_dm(&both, Role, false, none, &roles));
+        assert!(may_dm(&both, User, false, P::MANAGE_GUILD, &[]));
+        assert!(!may_dm(&both, Role, false, P::MANAGE_GUILD, &[5]));
+        // Fora das duas listas: nem o dono.
+        let off = access(false, None);
+        assert!(!may_dm(&off, User, true, P::ADMINISTRATOR, &roles));
+        // dmGuild sem cargos: so dono e Administrator.
+        let bare = access(false, Some(&[]));
+        assert!(!may_dm(&bare, Role, false, P::MANAGE_GUILD, &roles));
+        assert!(may_dm(&bare, Role, true, none, &[]));
+    }
+
+    #[test]
+    fn quem_pode_cancelar() {
+        let admin = access(true, None);
+        assert!(may_cancel(&admin, 10, 10, false, &[]));
+        assert!(may_cancel(&admin, 10, 11, true, &[]));
+        assert!(!may_cancel(&admin, 10, 11, false, &[9]));
+        let dm_only = access(false, Some(&[9]));
+        assert!(may_cancel(&dm_only, 10, 11, false, &[9]));
+        assert!(!may_cancel(&dm_only, 10, 11, false, &[5]));
+        assert!(may_cancel(&access(true, Some(&[9])), 10, 11, false, &[9]));
+    }
+
+    #[test]
+    fn recusa_do_dm_diz_o_que_falta() {
+        let text = |a: &DmAccess, w| embed_text(&dm_denied(a, w));
+        assert_eq!(
+            text(&access(false, Some(&[9])), DmCommand::Role),
+            "Not allowed: To use this you need to be the server owner or have Administrator, or have one of these roles: <@&9>."
+        );
+        assert!(text(&access(true, None), DmCommand::User).contains("Manage Server"));
+        assert!(!text(&access(true, None), DmCommand::Role).contains("Manage Server"));
+        assert_eq!(
+            text(&access(false, Some(&[])), DmCommand::User),
+            "Not allowed: To use this you need to be the server owner or have Administrator."
+        );
     }
 
     #[test]
