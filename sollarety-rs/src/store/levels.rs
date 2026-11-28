@@ -43,11 +43,18 @@ pub struct LevelFile {
 #[serde(default, rename_all = "camelCase")]
 pub struct UserPrefs {
     pub level_up_dms: bool,
+    /// A pessoa ja respondeu (botao da DM ou /level-dms): a DM nao pergunta
+    /// mais. Fica fora do arquivo enquanto for false, como no C#.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub level_up_dms_answered: bool,
 }
 
 impl Default for UserPrefs {
     fn default() -> Self {
-        Self { level_up_dms: true }
+        Self {
+            level_up_dms: true,
+            level_up_dms_answered: false,
+        }
     }
 }
 
@@ -188,23 +195,25 @@ impl LevelStore {
             .is_none_or(|p| p.level_up_dms)
     }
 
+    /// Se a pessoa ja respondeu. Quem desligou antes deste campo existir
+    /// tambem conta como respondido.
+    pub fn dm_answered(&self, user_id: u64) -> bool {
+        self.lock()
+            .file
+            .users
+            .get(&user_id)
+            .is_some_and(|p| p.level_up_dms_answered || !p.level_up_dms)
+    }
+
+    /// Guarda a escolha e marca como respondida.
     pub fn set_dm(&self, user_id: u64, enabled: bool) {
-        let mut state = self.lock();
-        // O padrao (ligado) nao ocupa espaco no arquivo.
-        let changed = if enabled {
-            state.file.users.shift_remove(&user_id).is_some()
-        } else {
-            !state.file.users.contains_key(&user_id)
+        let prefs = UserPrefs {
+            level_up_dms: enabled,
+            level_up_dms_answered: true,
         };
-        if !enabled {
-            state.file.users.insert(
-                user_id,
-                UserPrefs {
-                    level_up_dms: false,
-                },
-            );
-        }
-        if changed {
+        let mut state = self.lock();
+        if state.file.users.get(&user_id) != Some(&prefs) {
+            state.file.users.insert(user_id, prefs);
             state.dirty = true;
         }
     }
@@ -276,7 +285,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn xp_nunca_negativo_e_dm_padrao_nao_ocupa_espaco() {
+    async fn xp_nunca_negativo_e_resposta_da_dm_fica_guardada() {
         let dir = scratch_dir("levels-ops");
         let store = LevelStore::open(dir.join("levels.json")).await.unwrap();
 
@@ -295,10 +304,14 @@ mod tests {
         assert_eq!(store.active_guild_count(8, |g| g == 2), 1);
 
         assert!(store.dm_enabled(7));
+        assert!(!store.dm_answered(7));
+        assert!(store.lock().file.users.is_empty());
         store.set_dm(7, false);
         assert!(!store.dm_enabled(7));
+        assert!(store.dm_answered(7));
         store.set_dm(7, true);
-        assert!(store.lock().file.users.is_empty());
+        assert!(store.dm_enabled(7));
+        assert!(store.dm_answered(7));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

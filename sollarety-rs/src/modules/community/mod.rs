@@ -62,7 +62,7 @@ pub async fn on_event(
         } => {
             let id = press.data.custom_id.as_str();
             if id.starts_with("lvl:") {
-                levels::on_component(ctx, press).await?;
+                levels::on_component(ctx, data, press).await?;
             } else if id.starts_with("eco:") {
                 economy::on_component(ctx, data, press).await?;
             } else if id.starts_with("ttt:") {

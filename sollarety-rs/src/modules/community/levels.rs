@@ -439,13 +439,21 @@ async fn notify_level_up(
         return;
     }
 
+    // A pergunta so vai ate a pessoa responder uma vez.
+    let ask = !levels.dm_answered(user.id.get());
+
     let description = format!(
-        "You reached **level {level}** in **{}**{}\n\nWould you like to keep receiving these DMs?",
+        "You reached **level {level}** in **{}**{}{}",
         embeds::safe_trim(guild_name, 100),
         if by_moderator {
             " (XP given by a moderator)."
         } else {
             "."
+        },
+        if ask {
+            "\n\nWould you like to keep receiving these DMs?"
+        } else {
+            ""
         }
     );
 
@@ -457,18 +465,17 @@ async fn notify_level_up(
         embed = embed.thumbnail(icon);
     }
 
-    let components = vec![serenity::CreateActionRow::Buttons(vec![
-        serenity::CreateButton::new(DM_YES)
-            .style(serenity::ButtonStyle::Success)
-            .label("Yes"),
-        serenity::CreateButton::new(DM_NO)
-            .style(serenity::ButtonStyle::Secondary)
-            .label("No"),
-    ])];
-
-    let builder = serenity::CreateMessage::new()
-        .embed(embed)
-        .components(components);
+    let mut builder = serenity::CreateMessage::new().embed(embed);
+    if ask {
+        builder = builder.components(vec![serenity::CreateActionRow::Buttons(vec![
+            serenity::CreateButton::new(DM_YES)
+                .style(serenity::ButtonStyle::Success)
+                .label("Yes"),
+            serenity::CreateButton::new(DM_NO)
+                .style(serenity::ButtonStyle::Secondary)
+                .label("No"),
+        ])]);
+    }
 
     match user.direct_message(http, builder).await {
         Ok(_) => {}
@@ -496,6 +503,7 @@ async fn notify_level_up(
 /// daqui.
 pub async fn on_component(
     ctx: &serenity::Context,
+    data: &Data,
     press: &serenity::ComponentInteraction,
 ) -> Result<(), Error> {
     let id = press.data.custom_id.as_str();
@@ -511,6 +519,8 @@ pub async fn on_component(
             return Ok(());
         }
     };
+
+    data.levels.set_dm(press.user.id.get(), keep);
 
     press
         .create_response(ctx, serenity::CreateInteractionResponse::Acknowledge)
